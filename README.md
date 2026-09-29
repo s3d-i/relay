@@ -12,7 +12,7 @@
 
 新想法先作为研究资产保存，区分怀疑、优先级决定和停止要求。主 agent 决定在什么边界传给执行者、继续现有有界调查，或收回 partial result 后停止。明确停止立即采用；含糊而会改变方向的意见先澄清。这个约定减少不必要地 steer 执行研究的 subagent，**不改写或保证 Codex 原生输入框的中断语义**。
 
-Continuation 保留在研究层：主 agent 审查一个有界任务的结果、及时补 notes，在方向仍明确且保护健康时继续下一个问题，不要求人每一步重新批准，也不因一个 subagent 结束就创建新会话。人类的 custom steer 先由主 agent 给出简短回执——怎样理解、当前执行到哪里、准备采取什么动作——然后保存原话并决定如何传给执行者。新想法不自动覆盖原目标；明确的立即停止优先。跨会话仍由人手动 fresh，notes 是继续理解的依据。
+Continuation 保留在研究层：主 agent 审查一个有界任务的结果、及时补 notes，在方向仍明确且保护健康时继续下一个问题，不要求人每一步重新批准，也不因一个 subagent 结束就创建新会话。人类的 custom steer 先由主 agent 给出简短回执——怎样理解、当前执行到哪里、准备采取什么动作——然后将原话保存到主会话的私密 artifact，并决定如何传给执行者。新想法不自动覆盖原目标；明确的立即停止优先。跨会话仍由人手动 fresh，notes 是继续理解的依据。
 
 完整 expected UX：
 
@@ -33,9 +33,13 @@ Continuation 保留在研究层：主 agent 审查一个有界任务的结果、
 
 Artifacts 围绕问题、实验、审计、失败路径或有价值的讨论组织，可以有子目录，也可以引用原有代码 commit、结果目录和图表。修改分析不修改原始结果；被否定的路线保留“不再相信它的理由”。一个 artifact 可以跨会话完善，一次会话也可涉及多个问题。
 
-影响研究的人类输入必须保存**原始 prompt**，通常在问题对应的 artifact 中逐字引用；agent 的解释另写。短约束/决定进入总文档并链接原文。秘密文本不能进入 Git：必要时明确标注脱敏，而非冒充完整原文。
+影响研究的人类输入按来源分开：**主动输入 / steer** 才称为人类原始 prompt；**Codex 提问的回答 / 选项选择** 关联问题、给出的选项和实际选择，用户另行输入的文字单列，不能把 Codex 写的选项称作人类原创。这个区分不能仅凭 `role=user` 或 hook 事件名推定。
 
-详见 [convention](skills/research-relay/references/convention.md)、[总文档模板](skills/research-relay/assets/RESEARCH.md)、[artifact 模板](skills/research-relay/assets/artifact.md)。[ensomi-model 风格示例](examples/ensomi-model/RESEARCH.md) 全部为教学虚构，不包含真实研究成果。
+所有原始输入与回答都作为私密内容，默认一个主 Codex session 共用一个 `artifacts/private/human-inputs/<主会话ID>.md`，跨 turn 继续追加，内部按来源分段。先确认 Git 忽略已生效且没有已跟踪/暂存文件，再保存原文。`RESEARCH.md`、问题 artifacts、`docs/`、README 和提交说明只保留必要的决定摘要、agent 解释及私密来源路径/锚点。原文不因没有密钥或已经脱敏就变成可提交内容。
+
+私密引用应注明“私密、本地”。其他克隆不会有这些文件，缺失时明确标注来源不可用；可共享正文仍须独立解释当前决定。Git 提交成功不代表私密输入已备份，清理 worktree 前须另行保全需要的本地原件。
+
+详见 [convention](skills/research-relay/references/convention.md)、[总文档模板](skills/research-relay/assets/RESEARCH.md)、[artifact 模板](skills/research-relay/assets/artifact.md)与[私密输入模板](skills/research-relay/assets/private-human-inputs.md)。[ensomi-model 风格示例](examples/ensomi-model/RESEARCH.md) 全部为教学虚构，不包含真实研究成果。
 
 不建立 Run/Generation、研究状态版本、event-sourcing、任务 DAG、调度数据库或 graph database。Git history 和普通实验 ID 足够。长期会话 continuation 保留对话状态；某些 fresh-context loops 自动创建下一轮；本项目选择人手动 fresh、从资产重新理解，不承诺更聪明、无损记忆或更省 token。
 
@@ -74,6 +78,8 @@ python3 -m research_relay notes --repo /absolute/path/research-project status
 
 返回独立 worktree 的绝对路径。默认位于 `<git-common-dir>/research-relay/notes`，branch 为 `relay-notes`。已有此 branch 的 worktree 就复用；否则创建一个不含代码历史文件的独立 notes branch/worktree。初始空提交只是建立 branch，不是研究版本。代码工作区的分支、索引和未提交改动保持原样；即便代码仓库尚无提交也可建立 notes。创建需要 Git 提交身份，未配置时会报错，不擅自写全局身份。
 
+`notes init` 同时在仓库本地 `info/exclude` 中追加 `/artifacts/private/`，保留其他规则，供所有关联 worktrees 使用。独立 notes branch 不继承代码分支的 `.gitignore`，所以不能只依赖后者。返回的 `private_inputs` 给出私密输入目录；`private_inputs_ignored` 必须为 true，`tracked_private_artifacts` 必须为空。重复 init 会保留 notes 和私密文件。status 只报告路径及保护状态，不输出原文。忽略规则若被覆盖，init/commit 会报错；已有跟踪或强制暂存的私密文件也会阻止操作，需要保留本地原件后人工清理索引，工具不自动删除或改写历史。
+
 在返回的 notes 路径写材料、查看 `git diff`。收尾示例：
 
 ```sh
@@ -82,7 +88,7 @@ python3 -m research_relay notes --repo /absolute/path/research-project commit \
   -m 'Explain comparison confound and remaining checks'
 ```
 
-必须显式列出审查过的文件；工具拒绝路径逃逸、symlink、隐藏/敏感文件名、部分密钥特征和超过 1 MiB 的文件，不接收目录或通配 pathspec。不相关的已暂存改动会阻止提交，未暂存的其他草稿保持原样。这些基本检查不能代替 agent 审查秘密与归属。大结果留原处引用；默认不 push、无 reset。删除已跟踪 notes 也必须显式指定该路径并审查。
+必须显式列出审查过的可共享文件；工具拒绝 `artifacts/private/`，以及路径逃逸、symlink、隐藏/敏感文件名、部分密钥特征和超过 1 MiB 的文件，不接收目录或通配 pathspec。不相关的已暂存改动会阻止提交，未暂存的其他草稿保持原样。被忽略的私密输入不出现在普通 status/remaining 中，需单独核对已保存。这些基本检查不能识别被复制到其他文件的所有原文，仍须审查文档和提交说明。大结果留原处引用；默认不 push、无 reset。删除已跟踪 notes 也必须显式指定该路径并审查。
 
 提交失败保留工作区和暂存区，`notes status` 下次能看到。只有返回 commit 后才称为提交成功；总文档和当前停止说明不能谎称 handoff 完成。不要删除整个 runtime 目录恢复 watcher——其中有 notes worktree 和未提交草稿。
 

@@ -22,11 +22,15 @@ description: 接续以 RESEARCH.md 和 linked artifacts 保存的长期研究，
 
 ## 人类反馈与委派
 
-每条影响研究的人类输入都保留**原始 prompt**，包括启动目标、追问回答、执行中的新想法与停止要求。通常写入围绕该问题组织的反馈 artifact，再在总文档中写其实际影响并链接原文。原文与 agent 解释分开；不要用转述冒充原文。若含秘密，保存经明确标注的脱敏文本并解释省略，秘密原文不得进入 Git。
+把**人类主动输入 / steer** 与 **Codex 提问的回答 / 选项选择** 分开记录。只有前者称为人类原始 prompt；后者关联 Codex 的问题、提供的选项和用户实际选择，选项措辞不归为人类原创。回答中的另行输入文字单列，仍保留回答来源；不能仅凭 `role=user` 或 `UserPromptSubmit` 分类。来源不明就标记待核查，不猜测。
+
+这些原始记录全部是私密内容，不以是否含密钥来判断。默认一个主 Codex session 复用一个 `artifacts/private/human-inputs/<主会话ID>.md`，内部区分上述来源；不按消息、turn 或研究问题拆文件。先运行 `notes ... init` 为独立 notes worktree 配置 Git 忽略，并确认 `private_inputs_ignored: true`、`tracked_private_artifacts` 为空，才写入原文。可借用[私密输入模板](assets/private-human-inputs.md)；具体引用规则见 [convention](references/convention.md#人类反馈)。
+
+`RESEARCH.md`、问题 artifacts、`docs/`、README 与提交说明只保留必要的决定、agent 解释和私密来源路径/锚点，不粘贴原文或选项回答。私密文件不提交、不强制 add；跨机器的克隆不会带上它，缺失时标明私密来源本地不可用，不从旧 transcript 自动补全。需要省略原文时只在私密记录内明确说明，不用脱敏原话替代可提交的决定摘要。
 
 区分待验证的怀疑、明确调整优先级、立即停止指令。明确决定直接保存并采用；含糊且可能改变方向的反馈先澄清。新想法不是自动中断 subagent 的新任务。主 agent 根据当前安全边界决定继续当前有界任务、请求 partial result 后交接，或按明确停止指令立即停止；向人简述原因。不声称能改变 Codex 输入框原生的中断语义，只减少对研究执行 subagent 的不必要 steering。
 
-处理执行中新反馈时，先核对执行者的实际状态，给人简短回执：你怎样理解这句话、正在做的工作停在哪里、你准备采取什么动作。把原话及决定写进相关 artifact，然后才将必要的变化传给执行者；明确的立即停止优先于写作。可疑的新解释先留为待检验问题，不能默默替换正在推进的目标。若主 turn 已被原生中断，不假定 subagent 随之停止：重新核查、收取 partial result 并处理归属。
+处理执行中新反馈时，先核对执行者的实际状态，给人简短回执：你怎样理解这句话、正在做的工作停在哪里、你准备采取什么动作。原话按来源写入主会话的私密 artifact，决定及解释写入相关问题 artifact，然后才将必要的变化传给执行者；明确的立即停止优先于写作。可疑的新解释先留为待检验问题，不能默默替换正在推进的目标。若主 turn 已被原生中断，不假定 subagent 随之停止：重新核查、收取 partial result 并处理归属。
 
 委派时给 subagent：本次问题、必要证据引用、允许改动的范围、具体可核查交付和停止边界。默认不给完整旧 transcript，不让它自行扩成多层调度。要求边做边保存有价值的观察与失败路径，并报告训练进程、输出位置、代码/实验身份和未完成点。主 agent 检查结果的证据强度后整合。重要人类反馈及时传达给相关执行者，不将所有新想法自动广播。
 
@@ -52,6 +56,6 @@ description: 接续以 RESEARCH.md 和 linked artifacts 保存的长期研究，
 
 1. 检查本次所有 subagents，收取已完成结果或保存 partial result，明确停止仍在工作的 agent 并核实不再写代码。仅发出停止请求不等于已经停止；无法确认时如实报告，不宣称清理完成。不得阻挡人类停止；若中断使清理未能完成，在已保存材料和最终状态中标记待核查。
 2. 核查独立训练：允许继续的任务写明身份、运行位置、输出与检查方式；不要全局 kill 进程。
-3. 更新总文档的当前理解与停留位置，补齐 artifacts、原始人类 prompt、未解决问题、证据强度和下一步具体检查点。不美化不确定性，不新增 Run/Generation、manifest 或研究版本号。
-4. 执行 `notes ... status`，逐文件审查 diff，确认无秘密、无大数据、无他人改动。使用 `notes ... commit --path RESEARCH.md --path artifacts/<相关文件>.md -m '<研究问题与变化>'` 精确提交。检查返回 commit 和 remaining。默认不 push，不 reset。失败就保留草稿与暂存区，说明失败和路径；下次启动先发现它，不能声称 handoff 已完成。
+3. 更新总文档的当前理解与停留位置、问题 artifacts 的决定摘要和私密来源引用；核对主会话私密 artifact 中主动输入与提问回答的分类。补齐未解决问题、证据强度和下一步具体检查点。不美化不确定性，不新增 Run/Generation、manifest 或研究版本号。
+4. 执行 `notes ... status`，逐文件审查 diff，确认无私密原文、无秘密、无大数据、无他人改动，并单独确认被忽略的私密 artifact 已保存。使用 `notes ... commit --path RESEARCH.md --path artifacts/<相关文件>.md -m '<研究问题与变化>'` 精确提交可共享材料，绝不选择 `artifacts/private/`。检查返回 commit 和 remaining；私密文件不在 remaining 中是预期行为，不代表已由 Git 备份。默认不 push，不 reset。失败就保留草稿与暂存区，说明失败和路径；下次启动先发现它，不能声称 handoff 已完成。
 5. 执行 `... stop --repo <研究仓库>`（只请求本 thread 的 watcher 退出），核实 status 不再 live；原生 Stop/Interrupt/SessionEnd 是自动退出的目标路径，不通过阻止 Stop 强制继续。最终简述已保存材料、commit/草稿、仍在运行的训练和未完成问题，然后结束 turn。下一次由人类手动 fresh 会话开始。

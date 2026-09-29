@@ -18,9 +18,10 @@ from .state import (RelayError, lock, locked, marker_path, process_identity,
 UNVERIFIED = "experimental-unprotected"
 CLOSEOUT = (
     "research-relay：进入收尾。停止开启新方向和委派新研究；让当前操作安全结束，"
-    "核对已有 subagents 的完成或 partial result 并停止，保存人类原始 prompt、"
-    "证据与未完成调查位置，更新 RESEARCH.md 和相关 artifacts，"
-    "只提交本次 notes，然后结束本 turn。不要 compact，不自动创建或继续会话。"
+    "核对已有 subagents 的完成或 partial result 并停止；人类主动输入/steer 与提问回答/选项分开记录，"
+    "原文只保存在 Git 已忽略的 artifacts/private/human-inputs/<主会话ID>.md。"
+    "更新 RESEARCH.md 和相关 artifacts 的决定摘要、私密来源引用、证据与未完成调查位置，"
+    "只提交可公开的本次 notes，不提交私密原文，然后结束本 turn。不要 compact，不自动创建或继续会话。"
 )
 
 

@@ -247,6 +247,85 @@ class NotesTests(RepositoryCase):
         self.assertIn("other.md", result["remaining"])
         self.assertEqual(git(path, "show", "--format=", "--name-only", "HEAD"), "RESEARCH.md")
 
+    def test_private_inputs_ignored_in_notes_and_code_worktrees(self):
+        exclude = self.runtime.parent / "info/exclude"
+        existing = exclude.read_text() + "\n# keep this local rule\nlocal-output/"
+        exclude.write_text(existing)
+        result = notes.init(self.repo)
+        path = Path(result["notes"])
+        private = Path(result["private_inputs"]) / f"{T1}.md"
+        private.parent.mkdir(parents=True)
+        private.write_text("Synthetic private prompt and option answer")
+        self.assertTrue(result["private_inputs_ignored"])
+        self.assertEqual(result["tracked_private_artifacts"], [])
+        relative = str(private.relative_to(path))
+        for checkout in (path, self.repo):
+            ignored = subprocess.run(["git", "-C", str(checkout), "check-ignore", "--", relative],
+                                     capture_output=True, text=True, check=True)
+            self.assertEqual(ignored.stdout.strip(), relative)
+        git(path, "add", "-A")
+        self.assertEqual(git(path, "diff", "--cached", "--name-only"), "RESEARCH.md")
+        self.assertNotIn("Synthetic", json.dumps(notes.inspect(self.repo)))
+        self.assertNotIn("private/", notes.inspect(self.repo)["status"])
+        notes.init(self.repo)
+        self.assertEqual(exclude.read_text(), existing + "\n/artifacts/private/\n")
+        self.assertEqual(private.read_text(), "Synthetic private prompt and option answer")
+        notes.commit(self.repo, ["RESEARCH.md"], "Record public summary")
+        self.assertEqual(git(path, "ls-tree", "-r", "--name-only", "HEAD"), "RESEARCH.md")
+
+    def test_explicit_private_paths_rejected_even_when_ignores_were_removed(self):
+        path = Path(notes.init(self.repo)["notes"])
+        private = path / notes.PRIVATE_INPUTS / f"{T1}.md"
+        private.parent.mkdir(parents=True)
+        private.write_text("Synthetic private input")
+        exclude = self.runtime.parent / "info/exclude"
+        exclude.write_text(exclude.read_text().replace("/artifacts/private/\n", ""))
+        self.assertFalse(notes.inspect(self.repo)["private_inputs_ignored"])
+        with self.assertRaisesRegex(RelayError, "must never be committed"):
+            notes.commit(self.repo, [str(private.relative_to(path))], "Reject private file")
+        self.assertTrue(notes.inspect(self.repo)["private_inputs_ignored"])
+        self.assertEqual(git(path, "diff", "--cached", "--name-only"), "")
+        self.assertEqual(private.read_text(), "Synthetic private input")
+
+    def test_forced_private_index_entries_block_init_and_commit_without_reset(self):
+        path = Path(notes.init(self.repo)["notes"])
+        private = path / notes.PRIVATE_INPUTS / f"{T1}.md"
+        private.parent.mkdir(parents=True)
+        private.write_text("Synthetic forced private input")
+        relative = str(private.relative_to(path))
+        git(path, "add", "-f", "--", relative)
+        head = git(path, "rev-parse", "HEAD")
+        self.assertEqual(notes.inspect(self.repo)["tracked_private_artifacts"], [relative])
+        with self.assertRaisesRegex(RelayError, "already tracked or staged"):
+            notes.init(self.repo)
+        for chosen in (["RESEARCH.md"], [relative]):
+            with self.subTest(chosen=chosen), self.assertRaisesRegex(RelayError, "already tracked or staged"):
+                notes.commit(self.repo, chosen, "Reject staged private input")
+        self.assertEqual(git(path, "rev-parse", "HEAD"), head)
+        self.assertEqual(git(path, "diff", "--cached", "--name-only"), relative)
+        self.assertEqual(private.read_text(), "Synthetic forced private input")
+
+    def test_already_committed_private_file_is_not_protected_by_ignore(self):
+        path = Path(notes.init(self.repo)["notes"])
+        private = path / notes.PRIVATE_INPUTS / f"{T1}.md"
+        private.parent.mkdir(parents=True)
+        private.write_text("Synthetic historical private input")
+        git(path, "add", "-f", "--", str(private.relative_to(path)))
+        git(path, "commit", "-m", "Simulate prior privacy failure")
+        with self.assertRaisesRegex(RelayError, "already tracked or staged"):
+            notes.commit(self.repo, ["RESEARCH.md"], "Do not perpetuate tracked private inputs")
+        self.assertEqual(private.read_text(), "Synthetic historical private input")
+
+    def test_worktree_ignore_override_rejected_before_saving_inputs(self):
+        path = Path(notes.init(self.repo)["notes"])
+        (path / ".gitignore").write_text("!artifacts/private/\n!artifacts/private/**\n")
+        self.assertFalse(notes.inspect(self.repo)["private_inputs_ignored"])
+        with self.assertRaisesRegex(RelayError, "override private input protection"):
+            notes.init(self.repo)
+        with self.assertRaisesRegex(RelayError, "override private input protection"):
+            notes.commit(self.repo, ["RESEARCH.md"], "Reject broken ignores")
+        self.assertEqual(git(path, "diff", "--cached", "--name-only"), "")
+
     def test_unrelated_staged_changes_rejected(self):
         path = Path(notes.init(self.repo)["notes"])
         (path / "other.md").write_text("staged by somebody")

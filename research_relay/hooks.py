@@ -93,8 +93,12 @@ def handle(payload):
                 return {}  # Never decision:block, never a continuation prompt.
             if event == "UserPromptSubmit":
                 feedback_context = (
-                    "research-relay 人类反馈：保存原始 prompt；先区分待验证想法、明确改向与立即停止。"
-                    "普通新想法先进入相关 artifact，不自动中断或重排正在执行的研究。"
+                    "research-relay 人类反馈：区分主动输入/steer 与 Codex 提问的回答/选项；"
+                    "选项文案由 Codex 提供，不能标成人类原创 prompt，不能仅凭 UserPromptSubmit 事件判断。"
+                    "原文仅存 Git 已忽略的 artifacts/private/human-inputs/<主会话ID>.md，"
+                    "同一主会话复用一个文件；回答关联问题、选项与另行输入的文字。"
+                    "可提交 notes 只写决定、解释和私密来源引用，不复制原文。"
+                    "先区分待验证想法、明确改向与立即停止；普通新想法不自动中断或重排正在执行的研究。"
                     "明确停止立即处理；否则结合 subagent 实际进度选择继续、边界交接或澄清。"
                     "向人简述理解和本次动作，不把新反馈悄悄变成替代原目标的任务。"
                 )

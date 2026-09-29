@@ -2,9 +2,11 @@
 
 核验日期：2026-09-29。本文记录 research-relay 实现环境，不是 ensomi-model 研究笔记。README 说明操作，本文保留证据层级和未解决项。
 
+人类输入的原始记录仅存于 Git 忽略的私密 artifact，下文的私密链接只在保有原件的本机可用；其他克隆缺失时应标记来源不可用。本文记录决定摘要和证据，不复制原文。
+
 ## 产品解释已对齐
 
-职责边界来自一次 Codex 澄清提问后的选项选择，见[私密、本地选择记录](../artifacts/private/human-inputs/01a0eb31-2655-78b1-967a-bbaee34f7c31.md#answer-1)。选项措辞不归为人类原创 prompt。
+职责边界来自一次 Codex 澄清提问后的选项选择，见[私密选择记录](../artifacts/private/human-inputs/01a0eb31-2655-78b1-967a-bbaee34f7c31.md#answer-1)。这是用户对提议的选择，选项措辞不归为人类原创 prompt。
 
 因此主 agent 维护理解、处理人类反馈与交接；具体调查和实验按需委派。主 agent 收尾后停止，不变成常驻调度台。不承诺改变原生输入框的中断行为。
 
@@ -25,7 +27,7 @@
 
 ## 后续核验：原生 hook 握手不需要附接 socket
 
-本次后续核验以最初实现为基线。主动输入要求继续推进研究，并保留人类反馈、notes 交接和手动 fresh 的边界；见[私密、本地主动输入记录](../artifacts/private/human-inputs/01a0eb31-2655-78b1-967a-bbaee34f7c31.md#prompt-1)。
+本次后续核验以最初实现为基线。主动输入要求继续推进研究，并保留由人反馈方向、通过 notes 交接和手动 fresh 的边界；见[私密主动输入记录](../artifacts/private/human-inputs/01a0eb31-2655-78b1-967a-bbaee34f7c31.md#prompt-1)。
 
 因此把“研究问题继续推进”与“旧执行身份继续存活”分开：一个 subagent 结束后，主 agent 可以审查结果、更新 notes 并继续下一个有界问题；人类反馈先由主 agent 保存、澄清与决定如何交给执行者。上下文接近边界时整体收尾，下一次由人手动 fresh。没有新增自动会话循环或反馈调度数据库。
 
@@ -99,13 +101,13 @@ No-compaction marker 位于 Git common directory 内，按 thread 隔离，watch
 
 当前没有可调用的宿主 hook trust/会话注入接口，也没有已连接到 app-owned stdio 的受支持通道；不能自动代替人信任 hook。故 V1 的生产 `start` 硬性拒绝，不提供填写“verified=true”的开关。只有补齐真实证据并实现可持续检测保护失效的机制，才能修改这个门槛；不以单次成功或设置更大 context 代替。
 
-本次后续验证补充：新握手和配置准备测试覆盖同线程幂等、旧 turn/子线程拒绝、标记不出现在 status、收到回执不等于保护、现有配置保留、项目配置 symlink 防逃逸和 prompt/工具正文不被诊断记录采集；完整测试与官方 skill 校验通过。新增的配置管理查询已退出，没有启动研究或 watcher。独立行为试用确认“loss 新想法但先别打断”不改写当前任务，“马上停”则优先停止并诚实核查 partial result；这仍是只读演练，不是实际训练停止验证。
+本次后续验证补充：新握手和配置准备测试覆盖同线程幂等、旧 turn/子线程拒绝、标记不出现在 status、收到回执不等于保护、现有配置保留、项目配置 symlink 防逃逸和 prompt/工具正文不被诊断记录采集；完整测试与官方 skill 校验通过。新增的配置管理查询已退出，没有启动研究或 watcher。独立行为试用确认待验证的新想法不改写当前任务，明确停止指令则优先停止并诚实核查 partial result；这仍是只读演练，不是实际训练停止验证。
 
 ## 用户信任后的真实 app 测试
 
 用户明确报告已信任 hooks，并授权创建一个 fresh 测试聊天。原生配置查询确认六项均 enabled/trusted，无错误和警告；实际 app 日志记录 `config/batchWrite` 成功。未修改全局权限、模型设置或信任值。
 
-来源类型分别为：[主动反馈](../artifacts/private/human-inputs/01a0eb31-2655-78b1-967a-bbaee34f7c31.md#prompt-2)、[创建测试聊天的选项选择](../artifacts/private/human-inputs/01a0eb31-2655-78b1-967a-bbaee34f7c31.md#answer-2)和[已触发 Compact 的选项回答](../artifacts/private/human-inputs/01a0eb31-2655-78b1-967a-bbaee34f7c31.md#answer-3)。均为私密本地记录，本文只保留操作依据和结果摘要。授权范围为一个诊断聊天。
+来源类型分别为：[主动反馈](../artifacts/private/human-inputs/01a0eb31-2655-78b1-967a-bbaee34f7c31.md#prompt-2)、[创建测试聊天的选项选择](../artifacts/private/human-inputs/01a0eb31-2655-78b1-967a-bbaee34f7c31.md#answer-2)和[已触发 Compact 的选项回答](../artifacts/private/human-inputs/01a0eb31-2655-78b1-967a-bbaee34f7c31.md#answer-3)。以上均为私密本地记录；本文只保留操作依据和结果摘要。授权范围为一个诊断聊天。
 
 旧主聊天仍无调用回执。增加仅由 `hooks probe` 开启、五分钟后过期的入口诊断后，普通 shell 工具依然没有 handler entry。精确版本源码解释了这个现象：[loader](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/config/src/loader/mod.rs#L1668) 跳过启动时不存在的 `.codex`；[reload](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/core/src/session/mod.rs#L2069) 与 [层合并](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/config/src/state.rs#L435) 仅替换 user 层，保留原项目层集合；[hook discovery](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/hooks/src/engine/discovery.rs#L129) 枚举已有层。新 thread [重新加载配置](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/app-server/src/request_processors/thread_processor.rs#L1337)。这是源码推断与 fresh 对照实测的共同证据，没有读取进程内存。
 
