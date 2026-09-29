@@ -1,61 +1,65 @@
 ---
 name: research-relay
-description: 接续以 RESEARCH.md 和 linked artifacts 保存的长期研究，先理解与对齐人类反馈，再委派有界研究、持续记笔记并收尾。用于人类手动打开的 fresh Codex 会话；不自动接续会话或使用 compaction。
+description: Recover research understanding by following questions, evidence, and human feedback from RESEARCH.md. Preserve connections and input provenance, then advance the research and close out. Use in fresh Codex sessions opened manually by a human; no automatic session continuation or compaction.
 ---
 
 # research-relay
 
-研究资产是连续性的来源；会话只是临时工作空间。用户手动打开未继承旧历史的会话后 invoke `$research-relay`。不 fork/resume 冒充 fresh，不自动创建下一条主会话，不使用 `/goal` 或自动 continuation 维持研究，不接受 compaction，包括失败后的 fallback。
+Preserve epistemic durability: a fresh agent should understand what we are asking, why we arrived here, and what grounds remain available for reassessment. Research materials may combine observations, explanations, human decisions, and possible next steps. Document kinds, fixed depth, and lint cleanliness do not establish continuity. `RESEARCH.md` is the entry point for the current focus; connections can unfold further and revise that entry point.
 
-主 agent 负责与人对接、理解研究、保存反馈和决定交接时机。具体调查、代码研究和实验由**按需 subagent** 执行，默认一次一个；没有 subagent 工具时如实说明并请求用户选择执行方式，不自行变回长期 researcher。主 agent 不是常驻 supervisor，收尾后同样停止。
+Research materials carry continuity; sessions are temporary workspaces. The user manually opens a session without inherited history and invokes `$research-relay`. Do not present a fork or resume as fresh, automatically create the next main session, use `/goal` or automatic continuation to sustain research, or accept compaction as a fallback.
 
-这里的 continuation 是**研究问题的延续**：对齐方向 → 委派一个有界调查 → 接住人类反馈 → 审查结果与补充 notes → 在方向明确且保护健康时推进下一个问题。一个 subagent 结束不代表本次研究 turn 必须结束；也不需要人每完成一步都重新批准。需要人作决定、收到停止要求或进入收尾时才退出这个循环。跨会话的延续由人手动 fresh 后读取 notes 完成，不依赖旧 agent 存活。
+The main agent works with the human, maintains understanding, preserves feedback, and decides when to hand off. Delegate concrete investigation, code research, and experiments to subagents as needed, one at a time by default. If subagent tools are unavailable, explain the limitation and ask the user how to proceed rather than silently becoming a long-running researcher. The main agent also stops after closeout.
 
-## 接续或首次建立材料
+Continuation means continuing the research question: align on direction, delegate a bounded investigation, receive feedback, review results and update notes, then proceed while direction is clear and protection is healthy. A subagent finishing does not require ending the main turn or asking for approval again. Pause for a necessary human decision, a stop request, or closeout. Between sessions, the human opens a fresh session that reads the materials; continuity does not depend on the old agent staying alive.
 
-1. 从本 skill 路径找到 `scripts/relay.py`，执行 `python3 <skill>/scripts/relay.py notes --repo <研究仓库> status`。它定位独立的 `relay-notes` branch/worktree，不切换代码工作区。检查未提交/已暂存 notes；它们可能是上次提交失败留下的草稿，不丢弃、不覆盖。已有研究入口在其他位置时先读原入口，与用户对齐迁移范围，不新建第二套真相。
-2. 阅读总文档 `RESEARCH.md`，只展开影响本次方向的证据、解释和人类反馈 artifacts；核查实际代码 commit、实验状态和必要结果。不要默认读所有历史，不读取旧 transcript 代替材料，不机械执行旧 TODO。把陈旧结论、丢失证据、仍在运行的实验和未提交草稿列为待核查事项。
-3. 简述你的理解：当前意图与约束、证据能支持的判断、已排除路径及理由、主要不确定性和建议切入点。问会改变下一步行动的问题，取得明确方向。当前消息已经给出的反馈直接采用，不再问一遍；旧材料与当前意图有冲突时指出冲突并澄清。上一位 agent 的建议是待评估的建议，不是命令。
-4. 无笔记时，**先**明确意图、约束和本次方向，再运行 `notes ... init` 建立入口；按 [研究 convention](references/convention.md) 写成可独立阅读的说明。已有入口绝不能用模板覆盖。模板在 `assets/`，按需借用，不要求填满表格。
+## Resume or establish materials
 
-对齐阶段不要启用 watcher，不先派出研究任务来回避等待人类反馈。
+1. Locate `scripts/relay.py` relative to this skill and run `python3 <skill>/scripts/relay.py notes --repo <research-repo> status`. This locates the separate `relay-notes` branch/worktree without switching the code checkout. Inspect uncommitted and staged notes; they may be drafts from a failed commit. Preserve them. If an existing research entry point lives elsewhere, read it first and align on any migration instead of creating a competing account.
+2. Read `RESEARCH.md` to recover the current question and how it arose. Follow relevant connections to evidence, interpretations, counterexamples, and human feedback, continuing laterally or into more detail as needed. For judgments that will affect action, also look for materials that cite or revise them: `notes ... links --path <file>` shows explicit outgoing links and backlinks; then read the relevant prose. Treat the entry point as revisable, and consider relevant material it does not list. Check actual code state, experiments, and necessary results. Do not traverse all history by default, substitute an old transcript for materials, or execute an old TODO mechanically. Explain how missing sources limit a judgment.
+3. Briefly state your understanding: current intent and constraints, what the evidence supports, routes set aside and why, major uncertainties, and a suggested starting point. Ask questions that would change the next action. Apply direction already given in the current message without asking again. Surface and clarify unresolved conflicts with older constraints. A previous agent's suggestion remains a suggestion to reassess.
+4. When no notes exist, establish intent, constraints, and direction before running `notes ... init`. Follow the [material convention](references/convention.md) to write an account that stands on its own. Never overwrite an existing entry point with a template. Borrow from `assets/` as useful; headings and directories do not prescribe a knowledge structure. The separate notes branch holds revisable working understanding. Moving it into formal mainline documentation takes an explicit decision; the code repository need not first adapt to relay.
 
-## 人类反馈与委派
+Do not start the watcher during alignment, or delegate research to avoid waiting for necessary human feedback.
 
-把**人类主动输入 / steer** 与 **Codex 提问的回答 / 选项选择** 分开记录。只有前者称为人类原始 prompt；后者关联 Codex 的问题、提供的选项和用户实际选择，选项措辞不归为人类原创。回答中的另行输入文字单列，仍保留回答来源；不能仅凭 `role=user` 或 `UserPromptSubmit` 分类。来源不明就标记待核查，不猜测。
+## Human feedback and delegation
 
-这些原始记录全部是私密内容，不以是否含密钥来判断。默认一个主 Codex session 复用一个 `artifacts/private/human-inputs/<主会话ID>.md`，内部区分上述来源；不按消息、turn 或研究问题拆文件。先运行 `notes ... init` 为独立 notes worktree 配置 Git 忽略，并确认 `private_inputs_ignored: true`、`tracked_private_artifacts` 为空，才写入原文。可借用[私密输入模板](assets/private-human-inputs.md)；具体引用规则见 [convention](references/convention.md#人类反馈)。
+Distinguish unsolicited human prompts or steering from answers to Codex questions and selections among options. Only the former are original human prompts. For answers, preserve the question, offered options, and actual selection; model-written option wording does not become human-authored text. Record separately any words the person adds, retaining their origin as an answer. Neither `role=user` nor `UserPromptSubmit` alone establishes provenance. Mark unknown origins as unverified.
 
-`RESEARCH.md`、问题 artifacts、`docs/`、README 与提交说明只保留必要的决定、agent 解释和私密来源路径/锚点，不粘贴原文或选项回答。私密文件不提交、不强制 add；跨机器的克隆不会带上它，缺失时标明私密来源本地不可用，不从旧 transcript 自动补全。需要省略原文时只在私密记录内明确说明，不用脱敏原话替代可提交的决定摘要。
+All original records are private, whether or not they contain secrets. By default, reuse one `artifacts/private/human-inputs/<main-session-id>.md` per main Codex session, with sections for the different sources. Do not split it by message, turn, or research question. Before saving originals, run `notes ... init` to establish Git ignores in the separate notes worktree and confirm `private_inputs_ignored: true` and an empty `tracked_private_artifacts`. Use the [private input template](assets/private-human-inputs.md) as needed; see [human feedback](references/convention.md#human-feedback) for provenance and citation details.
 
-区分待验证的怀疑、明确调整优先级、立即停止指令。明确决定直接保存并采用；含糊且可能改变方向的反馈先澄清。新想法不是自动中断 subagent 的新任务。主 agent 根据当前安全边界决定继续当前有界任务、请求 partial result 后交接，或按明确停止指令立即停止；向人简述原因。不声称能改变 Codex 输入框原生的中断语义，只减少对研究执行 subagent 的不必要 steering。
+Alongside original wording, write separately labelled **agent context annotations**: the question at the time, the proposal or result being referred to, code commits and uncommitted state, experiments, and local artifact locations. Date annotations and identify their basis. Leave uncertain references unresolved. Preserve options as presented at the time, separating the actual selection from any additional response. Interpret authorization within that question and those options; a summary must not expand its scope or attribute model wording to the person's original intent. Scientific judgments remain answerable to evidence. Goals, priorities, and authorization cannot be replaced by an agent's interpretation.
 
-处理执行中新反馈时，先核对执行者的实际状态，给人简短回执：你怎样理解这句话、正在做的工作停在哪里、你准备采取什么动作。原话按来源写入主会话的私密 artifact，决定及解释写入相关问题 artifact，然后才将必要的变化传给执行者；明确的立即停止优先于写作。可疑的新解释先留为待检验问题，不能默默替换正在推进的目标。若主 turn 已被原生中断，不假定 subagent 随之停止：重新核查、收取 partial result 并处理归属。
+`RESEARCH.md`, question artifacts, `docs/`, README files, and commit messages contain only necessary decisions, agent interpretations, and private source paths/anchors. Do not paste original inputs or option responses. Never commit or force-add private records. A clone on another machine will lack them: mark the private source as unavailable locally, rather than automatically recovering it from old transcripts. Explain omissions inside the private record; redacting a quotation does not make it a shareable decision summary.
 
-委派时给 subagent：本次问题、必要证据引用、允许改动的范围、具体可核查交付和停止边界。默认不给完整旧 transcript，不让它自行扩成多层调度。要求边做边保存有价值的观察与失败路径，并报告训练进程、输出位置、代码/实验身份和未完成点。主 agent 检查结果的证据强度后整合。重要人类反馈及时传达给相关执行者，不将所有新想法自动广播。
+Distinguish an untested suspicion, a clear priority change, and an immediate stop instruction. Apply explicit decisions; clarify ambiguous feedback that could change direction. A new idea does not automatically become a task that interrupts a subagent. At a suitable boundary, continue the current bounded task, collect a partial result before handing off, or stop immediately as instructed. Briefly explain the choice. This convention does not change the Codex input box's native interruption behavior.
 
-## 进入研究前的能力门槛
+When feedback arrives during execution, first check the executor's actual state and briefly acknowledge how you understand the input, where work stands, and what you will do. Save the original in the private session artifact, and the decision and interpretation in relevant question materials, before conveying necessary changes to the executor. Immediate stop instructions take priority over writing. Keep tentative explanations as questions rather than silently replacing the goal. If the main turn was interrupted, verify subagent state instead of assuming it stopped too; collect partial results and establish responsibility for remaining work.
 
-执行 `python3 <skill>/scripts/relay.py doctor --repo <研究仓库>`，核对当前主 thread 的明确绑定，不能靠“最新会话文件”猜测。执行 `... start --repo <研究仓库>` 启用经过验证的保护；只有该命令成功且明确报告受保护，才进入长期研究并委派任务。
+Give each subagent the current question, necessary evidence references, allowed changes, a verifiable deliverable, and a stopping boundary. Do not pass the entire old transcript by default or let delegation expand into a scheduling hierarchy. Ask it to preserve useful observations and failed paths as it works, and report training processes, output locations, code/experiment identities, and unfinished work. The main agent evaluates the strength of evidence before integrating results. Convey relevant human feedback to the appropriate executor without broadcasting every new idea.
 
-**当前 V1 的 `start` 有意返回失败：原生送达、Stop 与 manual PreCompact 已在 fresh 测试聊天实测；auto PreCompact、主动中断/SessionEnd 清理和持续保护健康检查仍待验收。** 不把 watcher 活着、配置存在或单次测试通过当作完整保护。说明限制，可完成阅读、对齐、整理现有 notes；不要自动退到未受保护的长期研究。用户可单独选择可移植的文档工作流，但这不是受保护模式。
+## Capability gate before protected research
 
-`probe-start` 是集成诊断，不是研究启用捷径。只有明确的集成验证任务才按项目 README 使用它。它永远显示 `experimental-unprotected` / `protected: false`。不提高 compaction 阈值、不改全局审批、不绕过 hook trust，不修改私有数据库。
+Run `python3 <skill>/scripts/relay.py doctor --repo <research-repo>` and verify the explicit main-thread binding; never guess from the newest session file. Run `... start --repo <research-repo>` to enable verified protection. Enter sustained protected research and delegate tasks only when the command succeeds and explicitly reports protection.
 
-集成诊断可以使用 `hooks prepare` 准备项目配置，再通过 app 原生设置审查信任；`hooks probe` 将一次性标记经当前 app 的 PostToolUse 送达，实际收到后才 `hooks ack`。不要读取本地 marker 的标记伪造送达，也不要把手动执行 hook 的测试当作 app 事件。送达成功仍不代表 PreCompact 已通过验证；没有 App Server socket 本身不是采用原生 hooks 的障碍。
+**Currently, `start` deliberately fails because complete automatic protection has not passed verification.** A live watcher, an existing configuration, or a single successful test is insufficient. Explain the limitation. Reading, alignment, and organizing existing notes remain available; do not silently fall back to unprotected sustained research. The user may separately choose the portable material workflow, which does not provide protected mode.
 
-受保护路径未来通过验收后：对齐完才启动，同主会话幂等启用，另主会话占用时报告并等待人类处理，不抢占；主 turn 结束 watcher 退出，后续研究 turn 重新执行启用检查。原主会话的 no-compaction 标记跨 watcher 退出保留，作用范围按 thread 明确限定。当前实现绝不能把该预期写成已验证事实。
+`probe-start` is an integration diagnostic, not a research-start shortcut. Read the [sidecar instructions](references/sidecar.md) only for an explicit integration verification task. It always reports `experimental-unprotected` / `protected: false`. Do not raise compaction thresholds, change global approvals, bypass hook trust, or modify private databases.
 
-## 研究过程中的材料维护
+Once the protected path is verified in the future, start it after alignment. Repeated activation for the same main session should be idempotent; report another session's occupancy without taking over. The watcher exits when the main turn ends, and later research turns must check activation again. The original main thread's no-compaction request survives watcher exit within that thread's scope. This is intended behavior, not a claim of completed verification.
 
-按 [convention](references/convention.md) 持续记录有后续意义的观察、反例、失败诊断、被否定解释和方向调整。总文档表达当前理解，artifacts 保存可核查细节。修改解释不修改实验原始结果；保留重要转折的理由。避免堆叠 session summaries。独立训练可以跨会话运行，但写明身份、输出路径和后续检查命令。
+## Maintain materials during research
 
-## 收尾与停止
+Follow the [convention](references/convention.md) to preserve consequential observations, counterexamples, failure diagnoses, and changes in direction. Explain connections near the judgments they bear on, linking related materials directly. A material need not belong to an item in the entry point, and observations, interpretations, and decisions may stay together when their relationship explains the question. If new material changes the question or weakens a judgment, update the entry point and affected interpretations while preserving important earlier understanding and the reasons for revision. Classifications formed while reading remain a perspective for this inquiry, not a document identity.
 
-收到 sidecar 提醒、人类停止指令或发现保护失效，停止新增方向和非必要子任务。在安全边界结束当前操作。收尾是核对持续记录，不是重建整场研究，不以“研究尚未完成”为理由拒绝退出。
+Revise explanations without rewriting original experimental results. Preserve enough of changing code and outputs to revisit the basis of a judgment. Maintain connections involved in the current inquiry; do not make repository-wide link repair or document normalization a prerequisite. Independent training may continue across sessions when its identity, output paths, and check commands are recorded.
 
-1. 检查本次所有 subagents，收取已完成结果或保存 partial result，明确停止仍在工作的 agent 并核实不再写代码。仅发出停止请求不等于已经停止；无法确认时如实报告，不宣称清理完成。不得阻挡人类停止；若中断使清理未能完成，在已保存材料和最终状态中标记待核查。
-2. 核查独立训练：允许继续的任务写明身份、运行位置、输出与检查方式；不要全局 kill 进程。
-3. 更新总文档的当前理解与停留位置、问题 artifacts 的决定摘要和私密来源引用；核对主会话私密 artifact 中主动输入与提问回答的分类。补齐未解决问题、证据强度和下一步具体检查点。不美化不确定性，不新增 Run/Generation、manifest 或研究版本号。
-4. 执行 `notes ... status`，逐文件审查 diff，确认无私密原文、无秘密、无大数据、无他人改动，并单独确认被忽略的私密 artifact 已保存。使用 `notes ... commit --path RESEARCH.md --path artifacts/<相关文件>.md -m '<研究问题与变化>'` 精确提交可共享材料，绝不选择 `artifacts/private/`。检查返回 commit 和 remaining；私密文件不在 remaining 中是预期行为，不代表已由 Git 备份。默认不 push，不 reset。失败就保留草稿与暂存区，说明失败和路径；下次启动先发现它，不能声称 handoff 已完成。
-5. 执行 `... stop --repo <研究仓库>`（只请求本 thread 的 watcher 退出），核实 status 不再 live；原生 Stop/Interrupt/SessionEnd 是自动退出的目标路径，不通过阻止 Stop 强制继续。最终简述已保存材料、commit/草稿、仍在运行的训练和未完成问题，然后结束 turn。下一次由人类手动 fresh 会话开始。
+## Close out and stop
+
+On a sidecar reminder, a human stop instruction, or protection failure, stop opening new directions and unnecessary subtasks. Finish the current operation at a safe boundary. Closeout checks an ongoing record; it should not reconstruct the entire investigation or refuse to end because research remains unfinished.
+
+1. Check every subagent used in this session. Collect completed results or preserve partial results, explicitly stop remaining agents, and verify that they have stopped writing. A stop request alone is not confirmation. Report what cannot be confirmed; do not obstruct a human stop instruction. If interruption prevents cleanup, mark the unresolved state in saved materials and the final report.
+2. Check independent training. For work allowed to continue, record its identity, location, outputs, and health checks. Do not kill processes indiscriminately.
+3. Update the entry point's current focus and understanding, affected connections, decision summaries, and private source citations. Check that private records distinguish original wording, questions/options, actual responses, and agent context annotations. Try to explain from the materials alone why we arrived here, what remains questionable, and why the next step is worthwhile. Fill actual gaps without reorganizing the repository. State evidence strength, active work, and concrete check locations; do not embellish certainty or add Run/Generation records, manifests, or research version numbers.
+4. Run `notes ... status` and review each file's diff. Check for private originals, secrets, large data, and unrelated changes; separately verify that ignored private artifacts were saved. Commit only reviewed shareable files with `notes ... commit --path RESEARCH.md --path artifacts/<relevant-file>.md -m '<question and change>'`, never `artifacts/private/`. Check the returned commit and remaining changes. Private files are absent from `remaining` by design, which does not mean Git backed them up. Do not push by default or reset drafts. On failure, retain drafts and the index, report the failure and paths, and leave them discoverable at the next start. Do not claim a completed handoff.
+5. Run `... stop --repo <research-repo>` to request only this thread's watcher exit, then verify it is no longer live. Native Stop/Interrupt/SessionEnd are intended cleanup boundaries; do not block Stop to force continuation. Briefly report saved materials, commits or drafts, training still running, and unresolved questions, then end the turn. The human opens the next fresh session manually.

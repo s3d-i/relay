@@ -63,10 +63,10 @@ def handle(payload):
                 marker["last_precompact"] = {"trigger": payload.get("trigger"), "at": time.time()}
                 write_json(marker_file, marker)
                 return {"continue": False, "stopReason": "research-relay forbids compaction in this opted-in thread",
-                        "systemMessage": "research-relay：已请求在 compaction 前停止；请手动新建 fresh 会话读取 notes。"}
+                        "systemMessage": "research-relay: Requested a stop before compaction. Manually open a fresh session to read notes."}
             # Delivery/cleanup requires exact transcript binding, not only a parent id.
             if not transcript:
-                return {"systemMessage": "research-relay：缺少主会话 transcript 绑定；自动提醒不可用。"}
+                return {"systemMessage": "research-relay: Main-session transcript binding is missing; automatic reminders are unavailable."}
             probe = marker.get("delivery_probe")
             if (event == "PostToolUse" and probe and not probe["emitted"] and
                     probe["turn_id"] == payload.get("turn_id")):
@@ -93,23 +93,29 @@ def handle(payload):
                 return {}  # Never decision:block, never a continuation prompt.
             if event == "UserPromptSubmit":
                 feedback_context = (
-                    "research-relay 人类反馈：区分主动输入/steer 与 Codex 提问的回答/选项；"
-                    "选项文案由 Codex 提供，不能标成人类原创 prompt，不能仅凭 UserPromptSubmit 事件判断。"
-                    "原文仅存 Git 已忽略的 artifacts/private/human-inputs/<主会话ID>.md，"
-                    "同一主会话复用一个文件；回答关联问题、选项与另行输入的文字。"
-                    "可提交 notes 只写决定、解释和私密来源引用，不复制原文。"
-                    "先区分待验证想法、明确改向与立即停止；普通新想法不自动中断或重排正在执行的研究。"
-                    "明确停止立即处理；否则结合 subagent 实际进度选择继续、边界交接或澄清。"
-                    "向人简述理解和本次动作，不把新反馈悄悄变成替代原目标的任务。"
+                    "research-relay human feedback: Distinguish unsolicited input/steering from answers to Codex "
+                    "questions and option selections. Option wording belongs to Codex, not an original human prompt; "
+                    "UserPromptSubmit alone does not establish provenance. Preserve originals only in Git-ignored "
+                    "artifacts/private/human-inputs/<main-session-id>.md, reusing one file per main session. "
+                    "Associate answers with their questions, options, and any additional human text. "
+                    "Add separate agent context annotations locating the question, proposal, code state, and results; "
+                    "leave uncertain references unresolved. Interpret selections and authorization within the question "
+                    "and options presented at the time. Do not attribute model wording to original human intent "
+                    "or expand authorization through a summary. Shareable notes contain decisions, interpretations, "
+                    "and private source citations, without copying originals. Distinguish an untested idea, an explicit "
+                    "change of direction, and an immediate stop request. New ideas do not automatically interrupt "
+                    "or reorder active research. Apply explicit stops immediately; otherwise check subagent progress "
+                    "and choose continuation, a handoff at a suitable boundary, or clarification. Briefly explain "
+                    "your understanding and action without silently replacing the original goal."
                 )
                 if not owner or not locked(runtime / "watcher.lock"):
-                    feedback_context += " watcher 未运行；本 turn 未受保护，重新检查启用条件；旧会话 PreCompact 标记仍保留。"
+                    feedback_context += " The watcher is not running; this turn is unprotected. Recheck activation conditions. The existing thread's PreCompact marker remains."
                 return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": feedback_context}}
             if not owner or not same_turn:
                 return {}
             if not locked(runtime / "watcher.lock") and value.get("status") not in ("stopped", "failed"):
                 marker.setdefault("notices", {}).setdefault("failure", {
-                    "reason": "watcher disappeared", "text": "research-relay watcher 意外退出；监测不可用，请保存当前工作并停止。",
+                    "reason": "watcher disappeared", "text": "research-relay watcher exited unexpectedly; monitoring is unavailable. Save current work and stop.",
                     "emitted": False, "created_at": time.time()})
             pending = [n for n in marker.get("notices", {}).values() if not n["emitted"]]
             if not pending:
@@ -119,9 +125,9 @@ def handle(payload):
                 notice["emitted_at"] = time.time()
             write_json(marker_file, marker)
             # Emitted means returned to the hook runner, NOT acknowledged by the model.
-            return {"systemMessage": "research-relay：实验性提醒已交给 hook runner；保护尚未验证。",
+            return {"systemMessage": "research-relay: Experimental reminder emitted to the hook runner; protection remains unverified.",
                     "hookSpecificOutput": {"hookEventName": "PostToolUse",
-                    "additionalContext": "\n".join(n["reason"] + "：" + n["text"] for n in pending)}}
+                    "additionalContext": "\n".join(n["reason"] + ": " + n["text"] for n in pending)}}
     except (RelayError, OSError, KeyError, TypeError) as exc:
         message = f"research-relay scoped hook failed; monitoring is NOT protected: {exc}"
         if event == "PreCompact":

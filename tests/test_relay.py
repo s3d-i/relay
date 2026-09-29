@@ -191,7 +191,7 @@ class HookTests(RepositoryCase):
         watcher.queue_notice(self.runtime, T1, "threshold reached")
         watcher.queue_notice(self.runtime, T1, "threshold reached again")
         result = self.hook("PostToolUse")
-        self.assertIn("进入收尾", result["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("Begin closeout", result["hookSpecificOutput"]["additionalContext"])
         self.assertEqual(self.hook("PostToolUse"), {})
         marker = read_json(marker_path(self.runtime, T1))
         self.assertEqual(len(marker["notices"]), 1)

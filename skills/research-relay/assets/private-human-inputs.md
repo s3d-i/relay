@@ -1,23 +1,31 @@
-# 主会话的人类输入（私密）
+# Human input for the main session (private)
 
-仅在 Git 已忽略且未跟踪的 `artifacts/private/human-inputs/<主会话ID>.md` 中使用此模板。同一主会话持续追加这个文件，不按消息或研究问题新建文件。主会话 ID 和日期仅用于来源定位。
+Use only in Git-ignored, untracked `artifacts/private/human-inputs/<main-session-id>.md`. Keep appending within the same main session, preserving cited anchors. Dates and session IDs locate sources; they are not research versions.
 
-## 主动输入 / steer
+## Unsolicited input / steering
 
 ### prompt-1
 
-注明输入时间/来源；在此处保存人类主动输入的原始 prompt。保留措辞，任何省略单独说明；不混入 agent 的解释。该占位文字不是实际输入。
+**Source and original wording:** Identify the time and source. Preserve the person's unsolicited input verbatim in its original language. Explain omissions separately. This placeholder is not an actual statement.
 
-## Codex 提问的回答 / 选项
+**Agent context annotation (not original wording):** Date the annotation and identify its basis. Explain the question at the time and what "this proposal" or "the earlier result" refers to: link relevant materials, commits, working directories, uncommitted diffs/snapshots, experiments, and local results. Add only the context needed for understanding. Distinguish checked references from uncertain ones; do not turn an inference into human intent.
+
+**Interpretation and effect:** Separately explain the agent's interpretation, which decisions the person explicitly made, and what still needs clarification. Link affected question materials. When correcting an earlier interpretation, retain the original wording and important changes in understanding.
+
+## Answers to agent questions / options
 
 ### answer-1
 
-注明时间和问题来源（调用 ID / 问题 ID，如可用）。依次保存 Codex 的问题、当时提供的选项、用户实际选择；明确选项文案由 Codex 提供。没有选择、只有自由回答时如实记录。
+**Agent question:** Identify the time and source, including call/question IDs when available. Preserve the question and options as originally presented, attributing their wording to the agent.
 
-用户另行输入的文字单独逐字保存，并保持与问题的关联；不要将选择标签或自由回答重分类为主动 prompt。无需把运行时包装回复的系统文案当成人类发言。
+**Human response:** Record the actual selection faithfully and any additional text separately and verbatim. State when there was only a free-text answer or no submitted selection. A default option that was not submitted is not a choice. Interpret a submitted choice and its authorization within the question and options presented at the time, preserving the distinction between model wording and the person's selection.
 
-## 来源待核查（如适用）
+**Agent context annotation (not original wording):** Link the question, proposal, code/experiment state, and artifacts needed to understand this exchange. Preserve what the options referred to at the time instead of substituting a later revision. Mark missing sources and unresolved references.
 
-无法确定主动输入还是提问回答时，在此保留已知内容与缺失的来源信息，不猜测。核实后移动到相应段落，保留已被引用的锚点。
+**Interpretation and effect:** Distinguish the person's actual response from the agent's interpretation of its scope. Link affected materials without rewriting option wording as an original human prompt.
 
-agent 的解释、可共享的决定摘要和研究影响写在相关问题 artifact 中，并反向引用此文件的对应锚点。私密原文不会随 Git 备份或跨机器交接。
+## Unverified provenance (if needed)
+
+When the source type is uncertain, preserve known content and missing information without guessing. Add clarification when verified, retaining anchors that have already been cited.
+
+Git does not back up or transfer this file or its annotations to other machines. Shareable materials contain only necessary decision summaries, agent interpretations, and private source citations, without copying original inputs, questions, or option responses.

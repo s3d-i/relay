@@ -1,19 +1,15 @@
-# 研究说明
+# Current research
 
-> 首次创建的写作起点，尚无研究结论。先用已对齐的研究意图替换提示语；不要覆盖已有入口。
+> A starting point for the first account, with no research conclusions yet. Replace the prompts with aligned intent; adapt the headings and never overwrite an existing entry point. This is the entry point for the current focus. Its connections can unfold further and link laterally.
 
-## 我们要理解什么
+## What we are asking, and why
 
-用连贯文字说明研究意图、实际目标、约束和当前优先级。写决定摘要并链接需要保留理由的讨论；引用人类输入时标清主动输入或提问回答，链接私密本地文件的锚点，不粘贴原文。私密来源缺失时明确说明，正文仍应可独立理解。
+Explain the goal, constraints, priorities, and how we arrived here in connected prose. Distinguish human decisions from agent interpretations. Where needed, cite anchors in private local sources and identify their origin without copying original wording. When a source is missing, explain which parts of the understanding cannot be checked.
 
-## 目前知道什么，仍不能断言什么
+## Current understanding and grounds for doubt
 
-说明关键观察及其适用范围，链接可核查的证据。将原始观察、分析解释与人的决定分开，写出 hypothesis、反例和 confounder。
+Describe key observations, the strength and scope of judgments, and links to evidence, counterexamples, and alternative explanations beside the claims they concern. Explain why these connections matter. The entry point need not list every material; new materials may revise its understanding or its question.
 
-## 为什么走到这里
+## Where work stands
 
-解释重要方向调整、暂不继续的路线和理由。旧解释的详细依据与被替代原因保留在相关 artifact。
-
-## 当前停留处
-
-写清未解决问题、正在运行的训练及检查方式、subagent 的结果/partial result 和停止状态。给出值得重新评估的下一项检查及具体位置，不把建议写成继任者的强制命令。
+State unresolved questions, why routes were deferred, and what work is still running. Identify the next location worth checking and why it could change a judgment. Suggestions remain open to reassessment by a fresh agent. Follow question materials onward to code, results, or human feedback as needed.

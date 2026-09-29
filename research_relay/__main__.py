@@ -6,7 +6,7 @@ import plistlib
 import subprocess
 import sys
 
-from . import hooks, notes, probes, watcher
+from . import hooks, links, notes, probes, watcher
 from .rollout import Rollout, locate
 from .state import RelayError, thread_id
 
@@ -66,8 +66,9 @@ def parser():
         if command == "_watch":
             q.add_argument("--nonce", required=True)
         if command == "notes":
-            q.add_argument("action", choices=("init", "status", "commit"))
-            q.add_argument("--path", action="append", default=[])
+            q.add_argument("action", choices=("init", "status", "links", "commit"))
+            q.add_argument("--path", action="append", default=[],
+                           help="reviewed commit file, or one links query file (default: RESEARCH.md)")
             q.add_argument("-m", "--message", default="")
         if command == "hooks":
             q.add_argument("action", choices=("prepare", "probe", "ack", "status"))
@@ -115,6 +116,13 @@ def main(argv=None):
                 value = notes.init(args.repo)
             elif args.action == "status":
                 value = notes.inspect(args.repo)
+            elif args.action == "links":
+                path = notes.find(args.repo)
+                if path is None:
+                    raise RelayError("No notes worktree. Run notes status/init first.")
+                if len(args.path) > 1:
+                    raise RelayError("Query one notes file at a time with --path.")
+                value = links.neighborhood(path, args.path[0] if args.path else "RESEARCH.md")
             else:
                 value = notes.commit(args.repo, args.path, args.message)
         print(json.dumps(value, ensure_ascii=False, indent=2))

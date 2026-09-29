@@ -1,21 +1,13 @@
-# 问题或研究资产的名字
+# The question being pursued
 
-此文回答什么问题，与总文档哪个判断有关？
+> Adapt or remove these prompts as useful. No fixed headings or document kind are required. Observations, explanations, human decisions, and possible next steps can remain together.
 
-## 观察与来源
+What does this material try to understand? Which questions or judgments does it connect to, and why are those connections worth following? It need not first find a parent item in RESEARCH.md.
 
-记录实际观察、实验/代码/数据身份和原始结果位置。尚未核查的来源明确标注。原始结果不可随解释改写。
+Record actual observations, applicable code/data/experiment identities, and original result locations. For uncommitted changes, identify the relevant diff or snapshot. Explain how strongly the observations support a judgment and which alternatives or counterexamples remain. Mark sources that have not been checked.
 
-## 解释与替代解释
+Place meaningful lateral connections beside the relevant judgment: how does this observation support, limit, or revise another account? How did another failure or a human decision change this question? Link onward to more specific evidence when useful, without splitting documents or adding reciprocal edges merely to fill out a structure.
 
-这些观察支持什么、支持多强？什么 confounder 或反例尚未排除？若否定旧路径，说明为什么不再相信，以及修正发生的依据。
+If human intervention matters here, summarize the decision and its effect in the agent's own words, distinguishing unsolicited input, free-text answers, and option selections. Originals stay in Git-ignored private records. Cite stable anchors labelled "private, local," resolving paths from this file. Keep context annotations outside the original wording in the private record; explain verification limits when a source is unavailable.
 
-## 人类决定与解释（如适用）
-
-用 agent 的概括说明约束、决定及其对本问题的影响，区分怀疑、决定、停止指令与待澄清问题；不要粘贴人类原文或 Codex 提问的选项回答。
-
-注明来源类型：人类主动输入 / steer，或 Codex 提问的回答 / 选项选择。必要时链接主会话私密文件的具体锚点并标明“私密、本地”；从本文件位置计算路径。原文仅保存在 Git 忽略的 `artifacts/private/human-inputs/<主会话ID>.md`，本文件只保留可共享摘要。其他克隆缺失私密文件时标明不可用，正文仍应解释清楚决定。
-
-## 未完成与继续位置（如适用）
-
-指出仍需核查的具体位置、操作及活动工作的状态。
+When an important explanation changes, preserve why it changed without rewriting original results. State unfinished checks, what new evidence would make an earlier route worth revisiting, and the locations of active work and results. If this material overturns a judgment in the entry point, revise the entry point too.

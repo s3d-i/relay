@@ -1,6 +1,6 @@
 interface:
   display_name: "Research Relay"
-  short_description: "以研究总文档接续长期研究，保存反馈、委派有界任务并在收尾后停止"
-  default_prompt: "使用 $research-relay 阅读研究材料，与我对齐本次方向，并先检查当前环境的保护能力。"
+  short_description: "Recover research understanding through evidence and human intent"
+  default_prompt: "Use $research-relay to recover understanding from the current research entry point and relevant connections, align with me on direction, and explain the environment's protection capabilities."
 policy:
   allow_implicit_invocation: false

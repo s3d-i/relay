@@ -1,49 +1,74 @@
-# 研究材料约定
+# Research material convention
 
-持久化研究资产、路径、人类反馈和当前理解，不持久化 agent 身份。此约定只需要 Markdown、可访问的证据和 Git，不依赖 Codex、sidecar 或旧聊天历史。
+Preserve what helps the next reader understand: the current question, the grounds for a judgment, human intervention, and connections worth pursuing. The measure is epistemic durability. Markdown, Git, and links serve that purpose. The reader is a capable fresh agent who can reinterpret materials; this convention does not try to anticipate and mechanically check every document defect.
 
-默认在独立 `relay-notes` branch 上维护 `RESEARCH.md` 与 linked artifacts。代码 checkout 不来回切分支；notes 用独立 worktree。项目实现的 README、集成决策和测试属于 research-relay 仓库，不能当作使用者的研究笔记。研究仓库的代码和实验输出仍放在各自位置，不复制大数据。
+## Entry point and connections
 
-## 总文档：读完能参与研究讨论
+`RESEARCH.md` is a self-contained account of the current focus. Reading it should make participation possible: what we want to understand, why it matters now, how far the evidence reaches, what human constraints apply, and what remains uncertain. It need not contain all knowledge or serve as the root of every material's meaning or authority.
 
-`RESEARCH.md` 是一篇持续维护的研究说明。正文解释意图、目标、约束、优先级；重要观察及其证据强度；仍属 hypothesis 的解释、反例与混杂因素；到达当前方向的原因；暂不继续的路线及原因；人的决定摘要、私密输入的来源引用和未回答问题；当前停留处、活动任务与具体检查点。引用是路径/锚点，不是复制原文。
+Follow the current question from the entry point into whatever detail is needed, then onward to another material, code, experimental results, counterexamples, or human feedback. There is no fixed depth, and materials need not link directly from the entry point. Directories locate files without determining which connections can occur. Document kinds, a fixed relation vocabulary, a global taxonomy, and a graph database are unnecessary. A reader can form temporary categories and views for the question at hand.
 
-用正文承担解释，用链接展开细节。既不要把总文档降为“详见 A/B”的目录，也不要将每次实验全文塞进正文。不按会话追加 summary，不要求会话结束时进入某阶段或增加版本号。可以重写段落改善当前理解；重要旧解释及它为什么被替代，先保留到相关 artifact。
+A connection should explain **why this source is worth reading here**. A difference in experimental conditions might weaken another account's attribution; a failure might change the next experiment's design; a human scope decision might explain why a result was not pursued. State the relationship near the judgment it affects and link to the passage or file that develops the grounds. Link labels and surrounding prose carry the explanation together. A link's presence does not establish that its evidence has been checked.
 
-判断应限定范围，例如“同一验证集、相同预处理下的两次比较提示……，尚不能排除 seed 差异”。区别“没找到证据”“证据反对”和“已确认”。启动时核查证据是否仍适用于当前代码/数据，发现失效就在相关判断旁说明。
+Connect related materials directly when useful, without adding edges just to fill out a graph or requiring every edge to be reciprocated. A counterexample may first appear in a material the entry point does not mention. Look for other materials that cite the current judgment, then revise the judgment and affected entry point when they conflict. `notes links --path <file>` can reveal explicit outgoing links and backlinks. It offers reading leads, not inferred semantic relationships, anchor verification, or proof of completeness. Direct reading and search remain useful. Follow cycles only as far as the current judgment requires.
 
-## Artifacts：围绕问题与证据
+The query currently extracts ordinary single-line inline/reference Markdown links from the notes worktree. It skips private and ignored sources and does not parse every Markdown extension. The main agent can read necessary private originals directly through their source citations. An omitted edge does not establish that no relationship exists. Reading may also uncover a connection not yet written down: when it changes understanding or opens a worthwhile question, explain its basis and preserve the connection without first inventing a relation type.
 
-可提交的问题材料命名可用 `artifacts/normalization-audit.md`、`artifacts/conditioning-failure.md`、`artifacts/evaluation-scope-feedback.md`。需要时使用子目录；一次实验可多文件，一个 artifact 可跨多个会话完善，一次会话可改多个 artifacts。私密人类输入是例外，按主会话聚合，见下文。无须统一研究会话编号、沉重 schema 或反馈事件系统。
+Rewrite the entry point as the focus changes. Retain important earlier explanations and the reasons they were superseded in relevant materials. New materials may require changing the question or abandoning a route. Avoid accumulating session summaries or removing disagreement to keep the entry point tidy.
 
-一篇 artifact 通常解释它回答的问题、实际观察与来源、分析与替代解释、人的决定和未完成点；只保留有用部分。实验的可追溯信息可包含实验 ID、代码 commit、配置/数据身份、执行命令、条件差异、原始结果路径、图表及日志定位。记录失败路径时保留为什么不再相信它，以及什么新证据会使它值得重访。
+## Materials and evidence
 
-原始实验结果保持不变，分析修正新增有日期/理由的修正段落。日期是普通来源信息，不是研究状态版本。没有实际检查的来源明确标“尚未核查”；找不到的结果不能变成已验证判断。样例数据必须标“示例”，禁止迁入真实笔记冒充成果。
+A material may combine experimental observations, failure explanations, human decisions, and possible next steps. Keep their sources and degrees of confidence distinguishable while preserving the relationships that explain the inquiry. `artifacts/` is a convenient initial location; nested directories and existing locations are also usable. Files develop around worthwhile questions. One experiment may have several materials, and one material may span sessions. Template headings are writing prompts.
 
-## 人类反馈
+Make it possible to return to the grounds. As the question requires, identify experiments or datasets, code commits, execution conditions, original results, and specific logs or figures. HEAD alone does not identify uncommitted code: retain the relevant diff or snapshot and explain how it relates to the observation. Reference external code and large results where they live instead of moving or copying them to satisfy a layout.
 
-按输入来源区分，不能把所有 user 消息统称为原始 prompt：
+Resolve relative links from the file containing them. For code in another worktree or local results, identify the repository/machine, a usable path, and the relevant commit or experiment. Anchors can locate passages; check affected citations when moving files or rewriting sections. When a source needed for the current question is unavailable, explain which judgment that limits. Repository-wide link repair is not a prerequisite for research.
 
-| 来源 | 私密记录内容 | 归属 |
+Distinguish observations, interpretations, and decisions, as well as absent evidence, contrary evidence, and confirmation. Mark sources that have not been checked. Revise judgments when their applicable code, data, or conditions change. Original results stay unchanged when explanations change; preserve the grounds and date of important analytical revisions. When deferring a route, explain why and what new evidence would make it worth revisiting.
+
+## Human feedback
+
+The human trajectory helps explain why research came this way. Evidence can overturn a scientific judgment. Goals, priorities, and authorization must respect the person's actual expression, which a more fluent agent summary cannot replace.
+
+Preserve distinctions of provenance. These describe authorship and response, not document kinds:
+
+| Source | Private record | Attribution |
 | --- | --- | --- |
-| 人类主动输入 / steer | 启动目标、主动补充、更正或停止要求的原文 | 人类原创 prompt |
-| Codex 提问的回答 / 选项选择 | 问题来源或调用 ID、问题原文、提供的选项、实际选择；用户另行输入的文字单列 | 选项文案属于 Codex，人的行为是选择；自由回答仍属于该提问的回答 |
-| 来源尚未核实 | 已知内容与不确定之处 | 不根据语气、`role=user` 或 hook 事件名推定为主动输入 |
+| Unsolicited human input / steering | Original wording of goals, additions, corrections, or stop requests | Original human prompt |
+| Free-text answer to an agent question | The question and its source, plus the person's original answer | An answer to that question, not reclassified as an unsolicited prompt |
+| Selection among agent options | The original question, options as presented, and actual selection; additional human text recorded separately | The agent wrote the options; the human selected. Interpret authorization within that content without expanding it or rewriting the proposal as human-authored |
+| Unverified source | Known content and missing information | Do not infer provenance from tone, `role=user`, or a hook event name |
 
-默认在 notes worktree 的 `artifacts/private/human-inputs/<主会话ID>.md` 保存，一个主 Codex session 一个文件，可跨多个 turn 和研究问题继续追加；内部用不同段落和稳定锚点（如 `prompt-1`、`answer-1`）区分来源。只保存有意义的人类输入与必要的提问上下文，不做全量聊天转储。文件名中的主会话 ID 仅用于定位私密来源，不是研究版本或生命周期状态。参照[私密输入模板](../assets/private-human-inputs.md)。
+By default, reuse `artifacts/private/human-inputs/<main-session-id>.md` for a main session, appending across turns and questions with stable anchors. Preserve meaningful inputs and necessary context rather than dumping the entire conversation. See the [private input template](../assets/private-human-inputs.md). Original wording, agent interpretations, and human decisions must remain distinguishable. Preserve the original language of human input; any translation belongs in a separately labelled agent annotation.
 
-**所有原始输入及回答都留在 Git 忽略的私密目录**，没有秘密词也不提交。写入前确认忽略规则已生效，且该目录没有已跟踪/暂存文件。`notes init` 在 Git common directory 的 `info/exclude` 中追加 `/artifacts/private/`（保留其他规则），覆盖独立 notes worktree；项目本身也可在 `.gitignore` 中保留同一规则。`notes status` 报告私密目录的忽略状态和已跟踪文件；`notes commit` 拒绝私密路径或已强制加入索引的私密文件。已有跟踪不会因忽略规则自动解除，需要保留本地原件后清理索引；不自动删除文件或改写历史。
+Making an input understandable outside its session takes more than copying a sentence. For references such as "this proposal" or "the earlier result," add a separate **agent context annotation**: what was being discussed, where the referenced proposal or question is, how to find the relevant code state, experiment, and local artifacts, and which correspondences are verified or still inferred. Preserve the choices available at the time of a selection; a later revision of the proposal cannot substitute for them. Retain a recoverable diff or snapshot for uncommitted states and results that may be overwritten. A mutable path alone may not identify what was meant then.
 
-`RESEARCH.md`、问题 artifacts、实现文档和提交说明只写 agent 整理的必要约束、决定及其影响，不引用整段/片段原文，也不复制所选选项。链接应标明“私密、本地”，相对路径从引用文件所在目录计算，并指向具体锚点；这类链接在其他克隆缺失是预期行为，应标明来源不可用，不能编造原文或自动读取旧 transcript 补全。可共享正文仍须能独立解释当前决定。私密原文、agent 解释、人的决定不能相互冒充；摘要本身也要审查是否泄密。
+Date annotations and identify their basis. Keep unresolved references uncertain, asking for clarification when they affect action. If a later reader finds that an agent misunderstood, add the correction and identify affected judgments while retaining original wording and important earlier interpretations for inspection. Enrich context without silently rewriting what the person said.
 
-来源分类与行动语义分别记录：主动输入或提问回答都可能表达怀疑、明确决定或停止指令。尚未澄清的提议留为问题，不偷换成承诺执行的任务。当前输入优先，但遇到与旧约束冲突且无法确定范围时应对齐。若无法保留完整原文，在私密文件内明确标记省略及原因；不把脱敏原话搬回可提交文档。
+Original inputs, questions, and options stay in Git-ignored private storage, even when they contain no secrets. Before writing, confirm `private_inputs_ignored: true` and an empty `tracked_private_artifacts`. `notes init` appends `/artifacts/private/` to the Git common directory's `info/exclude`, covering the separate notes worktree. `notes commit` rejects private paths and private files forced into the index. For already tracked originals, preserve the local files before removing them from the index; the tool does not delete files or rewrite history automatically.
 
-## 活动工作与交接
+Shareable materials contain only the agent's necessary account of decisions, constraints, interpretations, and effects, without copying original wording or selected options. Label source citations "private, local," resolve paths from the citing file, and link to anchors. If another clone lacks the original, state that it is unavailable and which interpretations cannot be checked. Keep a decision summary that stands on its own; do not invent original wording or automatically recover it from old transcripts. Annotations in the private record may link back to the questions and evidence they affect.
 
-当前停留位置写到足以继续检查：哪个假设尚未区分、哪段代码/哪条日志、下一项检查如何执行。上一位 agent 的建议供继任者重评，不自动成为任务。独立训练写明 job/PID（如有）、机器/服务、工作目录、输出位置、健康检查方式、是否可继续；PID 不是长期唯一身份，要结合启动时间、任务名等核对。Subagents 列明结果或 partial result 保存在哪，是否已结束；不得在宣布结束后继续偷偷改代码。
+Interpret source and action separately: an unsolicited input, free-text answer, or option selection can express a suspicion, a decision, or a stop request. An untested idea is neither a confirmed conclusion nor an automatic replacement for the current goal. Apply decisions already clear in the current input. Align when a conflict with an older constraint leaves the scope uncertain.
 
-Handoff 就是核对这两层材料，单独确认私密输入已本地保存，再提交可共享 notes。被忽略的私密文件不会出现在普通 `git status` 中，也不会随 clone/push 交接；不要将提交成功解释成原文已备份，清理 worktree 前须保全需要的私密文件。检查 status 和 diff，显式列出文件；不 `git add .`、不强制添加私密目录、不自动 push、不 reset。Git 提交失败保留草稿并说明，下一位从 notes worktree 的未提交/暂存改动中发现它。Git history 保留正常演变，不引入研究状态发布或额外 manifest。
+## Working understanding and project commitments
 
-## Fresh context 的阅读验收
+Maintain materials on a separate `relay-notes` branch/worktree by default. This preserves room for provisional, revisable explanations without assigning them lower value. An account does not automatically become a mainline project commitment because it is tidy, passes checks, or was committed by an agent. Select conclusions explicitly before incorporating them into formal documentation, preserving their scope and grounds.
 
-不读旧 transcript，只读总文档与必要链接，读者应能说出：研究目标是什么；已有证据支持到哪里；哪条路径为何暂缓；人的决定与未答问题是什么；什么还在运行；下一项值得核查的是什么。做不到时改善叙述和证据链接，不用延长旧会话掩盖材料缺口。
+Keep the code checkout's existing structure. Read existing materials where they are, and migrate only within an agreed scope. Notes tools locate materials, protect private files from commits, and commit explicit paths. They do not determine document kinds, link topology, or scientific value.
+
+## Continuation and closeout
+
+Preserve consequential observations and turns in understanding as they happen. Closeout checks that record instead of reconstructing the whole investigation. State the next question worth checking, concrete code/log locations, and unresolved counterexamples. A previous agent's suggestion remains available for reassessment rather than becoming an instruction by default.
+
+For independent training, record task identity, machine/service, directory, outputs, check methods, and whether it may continue. Check a PID together with start time or other identifying details. If subagents were used, preserve results or partial results and verify whether they have stopped. Research understanding should not depend on processes from the previous session staying alive.
+
+Review the files and connections involved in the current work, confirm that private inputs were saved locally, and commit only reviewed shareable files with `notes commit --path ...`. Handoff does not require attaching every material to the entry point, standardizing formats, or cleaning the whole repository. On failure, retain drafts and the index, report their locations, and make them discoverable through status next time. Do not push by default or reset drafts.
+
+Git commits do not back up ignored private files; preserve necessary originals separately before cleaning up a worktree. A handoff should distinguish shareable notes, sources available only locally, work still running, and unfinished judgments.
+
+## Reading with fresh context
+
+Without reading the old transcript, start from `RESEARCH.md` and the connections needed for this question. The reader should be able to explain what we are asking, why we arrived here, how strongly the evidence supports a judgment, what human intervention changed, what remains open to challenge, and why the next step is worthwhile. If necessary originals are missing, the reader should also be able to explain which understanding cannot be recovered.
+
+When that is not possible, supply the missing explanation, source, or connection, then align with the human. File counts, fixed depth, a complete taxonomy, or lint cleanliness cannot establish that understanding.

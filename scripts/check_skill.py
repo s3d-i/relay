@@ -8,7 +8,8 @@ text = (skill / "SKILL.md").read_text()
 assert text.startswith("---\nname: research-relay\ndescription: ")
 assert len(text.split("---", 2)) == 3
 assert (skill / "scripts/relay.py").is_file()
-for file in [*skill.rglob("*.md"), *(root / "examples").rglob("*.md")]:
+# Check this skill's shipped resources, never impose a shape on research notes.
+for file in [root / "README.md", *skill.rglob("*.md")]:
     for target in re.findall(r"\]\(([^)]+)\)", file.read_text()):
         if not target.startswith(("http:", "https:", "#")):
             assert (file.parent / target.split("#")[0]).exists(), (file, target)
