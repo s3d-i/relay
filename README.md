@@ -2,7 +2,7 @@
 
 以研究文档为中心的工作约定，加一个自动提醒收尾的临时 sidecar。持久化的是研究资产、路径、人类反馈和当前理解；会话由人手动开启和结束。
 
-**V1 状态：文档流程与 notes 工具可用；自动保护尚未通过当前 macOS app 验收。** `start` 和 `doctor` 返回退出码 `2` / `protected: false`。可运行的 `probe-start` 只用于集成诊断，绝不是受保护研究。没有用 prompt、mock 或 watcher 存活来冒充 no-compaction 已实现。
+**V1 状态：文档流程与 notes 工具可用；原生送达、Stop 与 manual PreCompact 已实测，完整自动保护验收仍未完成。** `start` 和 `doctor` 返回退出码 `2` / `protected: false`。可运行的 `probe-start` 只用于集成诊断，绝不是受保护研究。没有用 prompt、mock 或 watcher 存活来冒充完整 no-compaction 保护。
 
 本轮核验的桌面程序为 `/Applications/ChatGPT.app`（Codex 桌面能力），版本 `26.924.22138`、build `11645`，实际内嵌运行组件 `codex-cli 0.158.0-alpha.2.1`。PATH 中另一个 `0.155.1` CLI 不是该 app 的执行实例。环境证据、采用路径与未通过项见 [Codex 集成记录](docs/codex-integration.md)。
 
@@ -116,6 +116,8 @@ python3 -m research_relay render-hooks > /tmp/research-relay-hooks.json
 
 安装/信任后，用当前主会话做一次送达握手（仅诊断）：
 
+**配置应在 fresh 会话创建前准备好。** 已实测：本机版本的旧会话若启动时还没有 `.codex/`，之后信任 hooks 也可能继续使用旧的项目层集合，完全不启动 handler。新建同项目的 fresh 测试聊天后，原生送达与 Stop 路径成功；不要反复改信任或扩大权限来修复旧层缓存。
+
 ```sh
 python3 -m research_relay hooks probe --repo /absolute/path/research-project
 # 在同一 app turn 执行一个普通工具。原生 PostToolUse 应送入一次性标记。
@@ -124,6 +126,8 @@ python3 -m research_relay hooks status --repo /absolute/path/research-project
 ```
 
 probe 的启动输出和 status 都不暴露标记；禁止从 marker 文件读它冒充收到消息。回执绑定主 thread/turn/transcript，记录各 hook 的最后一次报告，未保存聊天或工具正文；`UserPromptSubmit` 只给主 agent 一个静态反馈处理提示，不调用 LLM、判断语义或自动 steer subagent。`acknowledged-by-caller` 仍不等于 PreCompact 验收成功，`protected` 保持 false。下一 turn 需重新 arm 诊断，不能用旧标记证明新 turn 的送达。直接执行 hook 或测试 fixture 都仍是模拟。
+
+`hooks probe` 另开启五分钟的 handler 入口诊断，只记录最后一次调用的事件、thread/turn、cwd 和 transcript 路径，不保存正文。`last_entry: null` 表示没有观察到脚本入口；有入口而无匹配回执则检查绑定。此诊断自动过期，不启动 watcher，也不算保护证据。在默认 workspace sandbox 中，初始化 `.git` 下的 runtime 状态可能需要该命令的正常审批；native hook trust 不代替文件访问审批。
 
 诊断启动为该 **repo + 主 thread ID** 留下一个持久的 `guard_requested` 标记，后续匹配的 `PreCompact` 对 auto/manual 都返回 `continue: false`。标记独立于 watcher，Stop/崩溃/重新开 app 后仍保留，不影响其他 thread。子会话有不同 transcript，不给它冒充主会话保护；本版没有证明子 agent 的 compaction 防护，研究启动门槛也未放开。
 
@@ -150,6 +154,7 @@ python3 -m research_relay stop --repo /absolute/path/research-project \
 | --- | --- |
 | 另一主会话占用 | 报告占用 UUID；让对应会话正常结束/停止，不能抢锁或批量 kill。 |
 | watcher 崩溃，状态仍像 active | `status` 以 OS 锁检测存活并报告失败；确认原工作后重做诊断。不删除锁文件抢占。 |
+| 已 trusted 但无 handler entry | 若 `.codex` 是在会话启动后新增，手动 fresh 同项目测试聊天，再 arm 探针；旧会话继续视为未保护。 |
 | 用量陈旧/格式变化/提醒未送达 | 看 `<git-common-dir>/research-relay/watcher.log` 和 status，保存 notes 后停止；更新集成证据后再谈保护。 |
 | `ps` 或 runtime 写入被 sandbox 拒绝 | 如实报告不可用，按宿主审批具体命令或在普通终端做诊断；不改全局审批。 |
 | notes 提交失败 | `notes status` 定位草稿、暂存区与 Git 错误，修复后显式重提，不 reset、不覆盖。 |
@@ -162,6 +167,6 @@ python3 -m research_relay stop --repo /absolute/path/research-project \
 
 `make check`：真实临时 Git 仓库 + 真正 watcher 子进程，覆盖跨 worktree 竞争启动、绑定、阈值与去重、Stop/中断/host 退出、失效、独立保护标记、精确提交和失败草稿。`make demo`：模拟 token 事件→独立 watcher→直接调用 hook→Stop 的可运行演示，输出明确写明 **SIMULATION ONLY**。
 
-只读真实 app 检查已确认版本/进程/stdio、当前会话 metadata 与用量字段、安装组件生成的协议 schema。独立 subagent 只读示例材料的试用完成，能准确解释证据边界；它不是实际 fresh 主会话，也不证明 app 集成。详细结果与剩余验收见 [集成记录](docs/codex-integration.md)。
+真实 app 已验证：精确版本/进程/stdio、用量观察、用户信任的六个 hooks，以及 fresh 测试聊天中的原生 PostToolUse 送达、确认和 Stop 退出。一次未干扰的测试中，watcher 在 turn 结束后约 0.6 秒退出，锁释放，guard marker 保留。它的退出原因是 `main-turn-ended`，同时存在匹配 nonce 的原生 Stop 请求；不把这写成只靠 Stop hook 才退出的证明。此后用户触发 native Compact，manual PreCompact 在 watcher 已退出时仍阻断：compact turn 被中断，没有 compacted-history 记录。auto PreCompact、用户主动中断时的清理、SessionEnd 与持续保护健康检查仍待验收。独立材料阅读/反馈试用不能替代平台验证。详见 [集成记录](docs/codex-integration.md)。
 
 本项目不自建模型调用链、工具执行器、sandbox、审批系统、聊天 UI、训练平台或通用 adapter framework。没有自动 push，没有私有数据库写入，没有 GUI 自动点击，没有常驻 LLM supervisor。

@@ -1,6 +1,7 @@
 """Native hook boundary. This module never performs research or restarts a turn."""
 
 from pathlib import Path
+import os
 import shlex
 import sys
 import time
@@ -9,9 +10,30 @@ from .state import (RelayError, lock, locked, marker_path, read_json,
                     runtime_dir, write_json)
 
 
+def record_probe_entry(payload):
+    """Opt-in, five-minute metadata trace distinguishes no launch from bad binding."""
+    try:
+        runtime = runtime_dir(payload.get("cwd") or os.getcwd())
+        path = runtime / "hook-entry-probe.json"
+        if not path.exists():
+            return
+        with lock(runtime / "control.lock"):
+            trace = read_json(path)
+            if not trace or trace["expires_at"] < time.time():
+                return
+            trace["last_entry"] = {k: payload.get(k) for k in (
+                "hook_event_name", "session_id", "turn_id", "cwd", "transcript_path")}
+            trace["last_entry"]["reported_at"] = time.time()
+            write_json(path, trace)
+    except (RelayError, OSError, KeyError, TypeError):
+        # Diagnostic failure must never change a hook's normal stop/delivery decision.
+        return
+
+
 def handle(payload):
     if not isinstance(payload, dict):
         raise RelayError("Hook input must be an object; no protection can be asserted.")
+    record_probe_entry(payload)
     event = payload.get("hook_event_name")
     # Codex subagent hooks carry the PARENT session_id. Do not treat these as Stop.
     if event not in ("PostToolUse", "PreCompact", "Stop", "Interrupt", "SessionEnd", "UserPromptSubmit"):

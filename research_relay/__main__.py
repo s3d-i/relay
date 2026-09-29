@@ -13,9 +13,9 @@ from .state import RelayError, thread_id
 
 ROOT = Path(__file__).resolve().parent.parent
 BLOCKERS = [
-    "Desktop PostToolUse additionalContext delivery has not been verified",
-    "Desktop trusted PreCompact blocking (manual AND auto) has not been verified",
-    "Desktop Stop/Interrupt/SessionEnd execution has not been verified",
+    "Auto-triggered PreCompact prevention has not been verified in the Desktop app",
+    "Active-work user interruption and SessionEnd cleanup remain unverified",
+    "Continuous protection health checks and per-thread activation are not production-ready",
 ]
 
 

@@ -17,10 +17,10 @@
 | skill discovery、显式 invoke、脚本 | 文档支持 `.agents/skills`、symlink、`SKILL.md`、`agents/openai.yaml`；脚本显式执行 | 本工程已安装 repo-local symlink，launcher 与官方 skill 校验通过；本次上下文未重新加载新 skill catalog | 显式 `$research-relay`，不隐式启用 |
 | `thread/tokenUsage/updated` | 内嵌 CLI 生成 schema 含 `threadId`、`turnId`、`tokenUsage.last/total/modelContextWindow`；app bundle 有事件处理代码 | 当前 App Server 是 app 私有 stdio，无发现可附接监听端点 | 不启动第二个 runtime；不用此 RPC 作 V1 接入 |
 | `thread/inject_items` | 内嵌 schema 含 `threadId` 和原始 `items` | 未附接原执行实例，未向主会话实际注入 | 不实现 RPC adapter |
-| `PostToolUse.additionalContext` | 官方定义可加 developer context；code-mode 有具体工具覆盖限制 | 安装包有 hooks settings；未安装/信任/实际触发本项目 hook | 仅候选原生通知边界，代码与配置可测试 |
-| `PreCompact` | 官方定义 `continue:false` 在 auto/manual compaction 前停止；内嵌枚举存在 | 未验证信任、实际触发及无 compact 结果 | 会话 marker + hook handler；不宣称保护 |
-| `Stop` | 是 turn 结束边界，可被其他 Stop hook 继续；`continue:false` 优先 | 只完成程序级模拟 | scoped handler 请求退出并返回 continue:false，不续跑 |
-| `Interrupt`、`SessionEnd` | 官方定义主线程中断/结束，不用于 subagents，短 timeout | 只完成程序级模拟 | 原生 hook 写 scoped stop 请求；无 restart |
+| `PostToolUse.additionalContext` | 官方定义可加 developer context；code-mode 有具体工具覆盖限制 | 用户信任后，fresh 测试聊天实际收到随机标记并确认；旧聊天未加载后来新增的项目层 | 采用原生通知边界；逐 thread/turn 验证，不能仅凭配置存在 |
+| `PreCompact` | 官方定义 `continue:false` 在 auto/manual compaction 前停止；内嵌枚举存在 | 用户触发 native Compact，manual PreCompact 在 watcher 已退出后阻断，turn interrupted，无 compacted 记录；auto 仍未实测 | 会话 marker + hook handler；不宣称完整自动保护 |
+| `Stop` | 是 turn 结束边界，可被其他 Stop hook 继续；`continue:false` 优先 | fresh 测试聊天完成后，原生 Stop 请求匹配 watcher nonce，watcher 随 turn 结束退出 | scoped handler 请求退出并返回 continue:false，不续跑 |
+| `Interrupt`、`SessionEnd` | 官方定义主线程中断/结束，不用于 subagents，短 timeout | Compact 被阻断时观察到 Interrupt；主动中断活动任务的清理与 SessionEnd 仍未实测 | 原生 hook 写 scoped stop 请求；无 restart |
 | `SubagentStop` | 不是主 turn 结束，且子任务 hook 的 session_id 可为 parent ID | 已测试模拟相同 parent ID 不会误停主 watcher | 不挂此 hook 作 cleanup；由主 agent 核查执行者 |
 
 ## 后续核验：原生 hook 握手不需要附接 socket
@@ -100,3 +100,35 @@ No-compaction marker 位于 Git common directory 内，按 thread 隔离，watch
 当前没有可调用的宿主 hook trust/会话注入接口，也没有已连接到 app-owned stdio 的受支持通道；不能自动代替人信任 hook。故 V1 的生产 `start` 硬性拒绝，不提供填写“verified=true”的开关。只有补齐真实证据并实现可持续检测保护失效的机制，才能修改这个门槛；不以单次成功或设置更大 context 代替。
 
 本次后续验证补充：新握手和配置准备测试覆盖同线程幂等、旧 turn/子线程拒绝、标记不出现在 status、收到回执不等于保护、现有配置保留、项目配置 symlink 防逃逸和 prompt/工具正文不被诊断记录采集；完整测试与官方 skill 校验通过。新增的配置管理查询已退出，没有启动研究或 watcher。独立行为试用确认“loss 新想法但先别打断”不改写当前任务，“马上停”则优先停止并诚实核查 partial result；这仍是只读演练，不是实际训练停止验证。
+
+## 用户信任后的真实 app 测试
+
+用户明确报告已信任 hooks，并授权创建一个 fresh 测试聊天。原生配置查询确认六项均 enabled/trusted，无错误和警告；实际 app 日志记录 `config/batchWrite` 成功。未修改全局权限、模型设置或信任值。
+
+来源类型分别为：[主动反馈](../artifacts/private/human-inputs/01a0eb31-2655-78b1-967a-bbaee34f7c31.md#prompt-2)、[创建测试聊天的选项选择](../artifacts/private/human-inputs/01a0eb31-2655-78b1-967a-bbaee34f7c31.md#answer-2)和[已触发 Compact 的选项回答](../artifacts/private/human-inputs/01a0eb31-2655-78b1-967a-bbaee34f7c31.md#answer-3)。均为私密本地记录，本文只保留操作依据和结果摘要。授权范围为一个诊断聊天。
+
+旧主聊天仍无调用回执。增加仅由 `hooks probe` 开启、五分钟后过期的入口诊断后，普通 shell 工具依然没有 handler entry。精确版本源码解释了这个现象：[loader](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/config/src/loader/mod.rs#L1668) 跳过启动时不存在的 `.codex`；[reload](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/core/src/session/mod.rs#L2069) 与 [层合并](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/config/src/state.rs#L435) 仅替换 user 层，保留原项目层集合；[hook discovery](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/hooks/src/engine/discovery.rs#L129) 枚举已有层。新 thread [重新加载配置](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/app-server/src/request_processors/thread_processor.rs#L1337)。这是源码推断与 fresh 对照实测的共同证据，没有读取进程内存。
+
+测试聊天：`Research Relay native hook test`，thread `01a0eb72-5a4b-7d22-a635-321870113c56`，使用同项目、本机 app、全新历史；没有 fork/resume 代替 fresh。
+
+| 检查 | 实际结果 |
+| --- | --- |
+| 初始化权限 | fresh 聊天的 workspace sandbox 最初拒绝 `.git` control-lock 写入；通过该命令的正常审批后继续。没有把 hook trust 当作 sandbox 写权限。 |
+| 原生 PostToolUse 送达 | turn `01a0eb72-5b46-7850-8247-06c03c8ab789` 中 emitted_at=1790656602.769183，主 agent 从 hook context 收到随机标记后确认，acknowledged_at=1790656623.360299。没有从 marker 读取标记或直接调用 handler 来伪造验证。 |
+| UserPromptSubmit | 同一测试 turn 有真实回执，reported_at=1790656602.8116648。它是反馈输入边界，不等于 Interrupt 的验证。 |
+| 第一次 Stop 尝试 | 后续输入在该 turn 完整结束前到达，测试者先显式清理 watcher；因此不作为自动退出通过证据。 |
+| 未干扰的 Stop 重测 | turn `01a0eb76-b61f-78a3-958c-ddf10bf2fba7`，watcher PID74751 在 final 前 live。父聊天只在 wait_threads 确认 completed 后读取结果，没有中途跟进、显式 stop 或 kill。Stop 原生回执 reported_at=1790656844.036326；stop 请求的 thread/nonce 与 watcher 一致。 |
+| 退出与保护请求保留 | watcher 于 1790656844.673779 退出，reason=`main-turn-ended`，OS 锁释放、PID 不存在、guard_requested 仍为 true。约 0.64 秒完成退出。因为 rollout 结束检查也先于 stop 请求检查，这证明整体退出和真实 Stop 请求，不声称 Stop 是唯一退出原因。 |
+
+入口诊断及所有回归的 `make check` **52 项通过**（5.752 秒）。测试脚本只采集事件及绑定 metadata，不采集 prompt、工具结果或聊天正文。至此已有真实送达与 turn 结束闭环。测试聊天已空闲，无仍在运行的测试 watcher。
+
+### Watcher 退出后的 native Compact
+
+用户在测试聊天触发 app 的 native Compact，并确认该操作已经触发。结果：
+
+- compact turn：`01a0eb79-6dba-7c71-9f42-bc38ad442bda`。
+- `PreCompact` 原生回执 `trigger=manual`，reported_at=1790656998.9059289；guard 在 1790656998.906466 请求停止。此前 watcher 已于 1790656844.673779 退出。
+- 随后出现 `Interrupt` 回执（1790656998.94887）和 rollout `turn_aborted`。app 的 wait_threads 返回该 turn 为 `interrupted`，测试聊天 idle；rollout 没有任何 `compacted` 记录，没有压缩后继续的模型 turn。
+- 这验证了当前版本的 **manual PreCompact 与 watcher 生命周期独立**。这次 Interrupt 源于阻断 compact，不代替用户按停止按钮中断活动研究的清理测试。
+
+auto PreCompact、用户主动中断活动任务、SessionEnd 及保护失效后的持续健康检查仍未实测，生产 `start` 保持阻塞，所有状态仍 `protected:false`。不把 manual 路径通过推写成 auto 路径实测通过。

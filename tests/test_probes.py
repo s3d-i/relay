@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import re
 import shlex
+import time
 
 from test_relay import RepositoryCase, T1, T2
 from research_relay import hooks, probes
@@ -95,6 +96,23 @@ class NativeProbeTests(RepositoryCase):
         self.assertIn("UserPromptSubmit", state["reported_hook_events"])
         self.assertNotIn("PRIVATE", json.dumps(state))
         self.assertFalse(state["protected"])
+
+    def test_entry_trace_exposes_binding_rejection_without_prompt_content(self):
+        probes.arm(self.repo, T1, self.home)
+        self.hook("PostToolUse", session_id=T2, prompt="PRIVATE CONTENT")
+        state = probes.inspect(self.repo, T1)
+        self.assertEqual(state["entry_probe"]["last_entry"]["session_id"], T2)
+        self.assertFalse(state["delivery_probe"]["emitted"])
+        self.assertNotIn("PRIVATE", json.dumps(state))
+
+    def test_entry_trace_expires(self):
+        probes.arm(self.repo, T1, self.home)
+        path = self.runtime / "hook-entry-probe.json"
+        value = read_json(path)
+        value["expires_at"] = time.time() - 1
+        write_json(path, value)
+        self.hook("PostToolUse", session_id=T2)
+        self.assertIsNone(probes.inspect(self.repo, T1)["entry_probe"]["last_entry"])
 
     def test_feedback_hint_does_not_emit_continuation_decisions(self):
         probes.arm(self.repo, T1, self.home)

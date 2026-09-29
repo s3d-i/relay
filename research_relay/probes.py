@@ -50,6 +50,9 @@ def arm(repo, identity, home):
     reader = Rollout(locate(home, identity)).bind(repo, identity)
     runtime = runtime_dir(repo)
     with lock(runtime / "control.lock"):
+        write_json(runtime / "hook-entry-probe.json", {
+            "target_thread_id": identity, "target_turn_id": reader.turn,
+            "expires_at": time.time() + 300, "last_entry": None})
         path = marker_path(runtime, identity)
         marker = read_json(path, {})
         if marker.get("rollout", str(reader.path)) != str(reader.path):
@@ -90,8 +93,10 @@ def inspect(repo, identity):
     identity = checked_identity(identity)
     marker = read_json(marker_path(runtime_dir(repo), identity), {})
     probe = marker.get("delivery_probe", {})
+    trace = read_json(runtime_dir(repo) / "hook-entry-probe.json", {})
     return {"thread_id": identity, "protected": False,
             "guard_requested": marker.get("guard_requested", False),
             "reported_hook_events": marker.get("hook_receipts", {}),
             "delivery_probe": {k: v for k, v in probe.items() if k != "token"},
+            "entry_probe": trace if trace.get("target_thread_id") == identity else {},
             "limitation": "Handler receipts and caller ack require native-host evidence; manual hook calls are simulations."}

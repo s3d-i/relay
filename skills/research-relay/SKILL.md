@@ -34,7 +34,7 @@ description: 接续以 RESEARCH.md 和 linked artifacts 保存的长期研究，
 
 执行 `python3 <skill>/scripts/relay.py doctor --repo <研究仓库>`，核对当前主 thread 的明确绑定，不能靠“最新会话文件”猜测。执行 `... start --repo <研究仓库>` 启用经过验证的保护；只有该命令成功且明确报告受保护，才进入长期研究并委派任务。
 
-**当前 V1 的 `start` 有意返回失败：本机 Desktop 的原生 hook 送达、信任和 PreCompact 阻断尚未完成实际验收。** 不把 watcher 活着、配置存在或测试通过当作保护。说明限制，可完成阅读、对齐、整理现有 notes；不要自动退到未受保护的长期研究。用户可单独选择可移植的文档工作流，但这不是受保护模式。
+**当前 V1 的 `start` 有意返回失败：原生送达、Stop 与 manual PreCompact 已在 fresh 测试聊天实测；auto PreCompact、主动中断/SessionEnd 清理和持续保护健康检查仍待验收。** 不把 watcher 活着、配置存在或单次测试通过当作完整保护。说明限制，可完成阅读、对齐、整理现有 notes；不要自动退到未受保护的长期研究。用户可单独选择可移植的文档工作流，但这不是受保护模式。
 
 `probe-start` 是集成诊断，不是研究启用捷径。只有明确的集成验证任务才按项目 README 使用它。它永远显示 `experimental-unprotected` / `protected: false`。不提高 compaction 阈值、不改全局审批、不绕过 hook trust，不修改私有数据库。
 
