@@ -1,10 +1,29 @@
-# Experimental context reminders
+# Context protection and reminders
 
 The sidecar reads usage from the current Desktop rollout and queues a reminder while context still has room, delivered through native `PostToolUse.additionalContext`. It does not call a model, interpret materials, or keep a research session alive. The material workflow works independently.
 
 Desktop verification on 2026-09-29 covers live usage observation, native delivery, manual PreCompact blocking, normal Stop, and archive-triggered Interrupt/SessionEnd cleanup. Fault tests also verified native warnings after unexpected watcher death. Lifecycle shutdown now checks its stop request before reading a transcript that the app may have moved; each new watcher activation can deliver fresh warnings while retaining the thread's compaction guard.
 
-Compaction refusal is established for the installed Desktop app by the live user test and documented PreCompact behavior; another compaction or archive test is not a prerequisite to the intended UX loop. Normal activation is still unfinished: `start` rejects every call and `doctor`/status hard-code `protected: false`. The watcher retains its latest observation while no new usage record arrives and keeps reminders pending until a native hook delivers them. Neither condition has a failure deadline. Normal activation is the remaining implementation gap. `probe-start` remains the diagnostic launch path.
+Compaction refusal is established for the installed Desktop app by the live user test and the [documented PreCompact contract](https://learn.chatgpt.com/docs/hooks): a matching `continue: false` stops compaction before it runs. Another compaction or archive test is not an activation prerequisite. The watcher retains its latest observation while no new usage record arrives and keeps reminders pending until a native hook delivers them. Neither condition has a failure deadline.
+
+## Normal activation
+
+Run through this skill's `scripts/relay.py` inside the actual Desktop main chat:
+
+```sh
+python3 /path/to/skill/scripts/relay.py start --repo /path/to/research-project
+python3 /path/to/skill/scripts/relay.py doctor --repo /path/to/research-project
+```
+
+`start` requires this execution's `CODEX_THREAD_ID`. It binds the unique main rollout and active turn, finds the actual Desktop ancestor process, and reproduces its supported launch overrides in a short-lived configuration reader. That reader uses only `initialize`, `config/read`, `hooks/list`, and `configRequirements/read`; it does not attach to the running host, create a chat, invoke a model, or change configuration. Its disk/configuration checks are combined with native delivery evidence from the actual chat, rather than treated as live-host delivery evidence.
+
+The effective configuration must expose an explicit `model_auto_compact_token_limit`. All six Relay project hooks must match the launcher, be synchronous, enabled, trusted, and unfiltered. Unknown launch options, disabled hooks, configuration read errors, and incomplete bindings fail with a concrete reason. The tool never guesses a limit from model capacity or grants hook trust.
+
+On `awaiting-native-delivery` (exit 2), the command has armed a delivery check but has not started monitoring. Receive the native hook context and run its acknowledgment command, then rerun `start`. The acknowledgment is scoped to this thread, active turn, and hook configuration. Successful activation returns `mode: protected`, `live: true`, and `protected: true`; repeated starts with the same active binding reuse the watcher. `doctor` returns exit 0 for `ready` or `protected`, and exit 2 for `blocked` or `closeout`. `ready` means the checks pass but a watcher still needs starting. A closeout reminder takes precedence over new research even though the compaction guard is healthy.
+
+The watcher and `status` check the activation's file fingerprints, guard, delivery evidence, host, and turn. Changes to the observed configuration layers (including trust settings) revoke protection and require fresh readiness checks. This conservatively includes unrelated edits to those same config files. Stop requests immediately cease reporting protection. The next main turn needs another delivery check and activation; nothing automatically restarts a chat or watcher.
+
+For a project without hooks, use `hooks prepare` and the native trust workflow below. An unavailable or blocked activation still permits the independent material workflow.
 
 ## When explicitly testing integration
 
@@ -40,8 +59,8 @@ In a Codex shell, the thread ID defaults to `CODEX_THREAD_ID`; supply it explici
 
 Usage comes from the latest model request's `last_token_usage.total_tokens`, not cumulative totals. Cached inputs and reasoning are not added twice. The reminder threshold is `min(0.60 * window, min(window, compact_limit) - max(32768, 0.20 * min(window, compact_limit)))`. Disk writes, polling, and the next hook boundary all introduce delay; immediate delivery during long reasoning or tool calls is not guaranteed.
 
-There is one watcher per Git common directory. Repeated activation with the same binding is idempotent; do not take a lock occupied by another session. A normal main-turn end, host exit, or matching stop request causes the watcher to exit, but real-app lifecycle verification still has gaps. Guard requests survive independently; neither research nor sessions restart automatically.
+There is one watcher per Git common directory. Repeated activation with the same thread, turn, and mode is idempotent; do not take a lock occupied by another session or promote a diagnostic watcher in place. A normal main-turn end, host exit, or matching stop request causes the watcher to exit. Guard requests survive independently; neither research nor sessions restart automatically.
 
-Read, parse, or binding errors are recorded as observation failures. Usage silence retains the last estimate; unconsumed reminders remain pending. A later runnable hook may display an observation error. Without a hook, inspect `status` and `<git-common-dir>/research-relay/watcher.log`. Report the failure and save notes; do not silently continue sustained research as if protection were established.
+Read, parse, binding, and protection-input errors are recorded as failures. Usage silence retains the last estimate; unconsumed reminders remain pending. A later runnable hook may display a failure. Without a hook, inspect `status` and `<git-common-dir>/research-relay/watcher.log`. Protection depends on the app continuing to honor its hook contract; disk checks cannot observe every in-memory or remote policy change. The private rollout format also remains an experimental adapter. Report a detected failure and save notes; do not silently continue sustained research as if protection were established.
 
 After stopping, verify `live: false`. Do not delete the entire runtime directory to recover a watcher: it may contain the notes worktree and drafts. Before removing hooks, save materials and retire the old research sessions that rely on them. Do not claim protection after disabling their hooks. Preserve private inputs separately.

@@ -8,13 +8,17 @@ import sys
 import threading
 import time
 import uuid
+import math
 
+from . import protection
 from .rollout import Rollout, threshold
 from .state import (RelayError, lock, locked, marker_path, process_identity,
                     read_json, runtime_dir, thread_id, verify_ancestor, write_json)
 
 
 UNVERIFIED = "experimental-unprotected"
+PROTECTED = "protected"
+ACTIVE = ("watching", "warning-pending", "warning-emitted-unverified", "warning-emitted", "starting")
 CLOSEOUT = (
     "research-relay: Begin closeout. Stop opening new directions or delegating new research; "
     "finish the current operation safely. Collect completed or partial subagent results and stop the agents. "
@@ -41,39 +45,80 @@ def queue_notice(runtime, identity, reason):
         write_json(path, marker)
 
 
-def status(repo):
+def status(repo, identity=None):
     runtime = runtime_dir(repo)
     if not runtime.exists():
         return {"status": "inactive", "protected": False}
     live = locked(runtime / "watcher.lock")
     value = read_json(runtime / "watcher.json", {})
     value["live"] = live
-    value["protected"] = False  # No release in V1 has passed the Desktop guard acceptance gate.
+    value["protected"] = False
     value.setdefault("status", "inactive")
-    if not live and value.get("status") in ("watching", "warning-pending", "warning-emitted-unverified", "starting"):
+    if not live and value.get("status") in ACTIVE:
         value["status"] = "failed"
         value["reason"] = "watcher exited without cleanup; inspect pending notes and hooks"
-    return value or {"status": "inactive", "live": live, "protected": False}
+    if live and value.get("status") in ACTIVE and value.get("mode") == PROTECTED:
+        try:
+            if identity and value.get("thread_id") != thread_id(identity):
+                raise RelayError("Repository watcher belongs to another thread.")
+            request = read_json(runtime / "stop.json", {})
+            if request.get("nonce") == value.get("nonce"):
+                raise RelayError("Watcher stop has been requested.")
+            protection.check_runtime(runtime, value)
+            if process_identity(value["host_pid"]) != value["host_identity"]:
+                raise RelayError("Desktop host identity changed.")
+            reader = Rollout(value["rollout"]).bind(repo, value["thread_id"])
+            if reader.turn != value["turn_id"]:
+                raise RelayError("Watcher belongs to a previous main turn.")
+            value["protected"] = True
+        except (RelayError, OSError, ValueError, KeyError) as exc:
+            value["status"], value["reason"] = "failed", str(exc)
+    value["research_start"] = ("closeout" if value["status"].startswith("warning-") else "protected") if value["protected"] else "blocked"
+    return value
 
 
 def start_probe(repo, identity, rollout, host_pid, compact_limit, poll=1.0):
+    return _start(repo, identity, rollout, host_pid, compact_limit, poll)
+
+
+def start(repo, identity, home, poll=1.0):
+    reader, checked = protection.environment(repo, identity, home)
+    try:
+        protection.check_delivery(repo, reader)
+    except RelayError:
+        from . import probes
+        return {**probes.arm(repo, identity, home), "status": "awaiting-native-delivery",
+                "research_start": "blocked"}
+    if not reader.usage:
+        raise RelayError("Waiting for the first main-turn usage record; retry at the next tool boundary.")
+    return _start(repo, identity, reader.path, checked["host_pid"], checked["compact_limit"],
+                  poll, capabilities=checked["capabilities"])
+
+
+def _start(repo, identity, rollout, host_pid, compact_limit, poll=1.0, capabilities=None):
+    repo = Path(repo).resolve()
     identity = thread_id(identity)
     actual_thread = os.environ.get("CODEX_THREAD_ID")
     if actual_thread and actual_thread != identity:
         raise RelayError("Requested thread differs from this execution's CODEX_THREAD_ID.")
-    if poll < 0.05:
+    if not math.isfinite(poll) or not 0.05 <= poll <= 60:
         raise RelayError("Invalid polling interval.")
     runtime = runtime_dir(repo)
+    mode = PROTECTED if capabilities else UNVERIFIED
     with lock(runtime / "start.lock"):
+        reader = Rollout(rollout).bind(repo, identity)
         if locked(runtime / "watcher.lock"):
             value = read_json(runtime / "watcher.json", {})
             if (value.get("thread_id") == identity and
                     value.get("rollout") == str(Path(rollout).resolve()) and
                     value.get("host_pid") == host_pid and
-                    value.get("compact_limit") == compact_limit):
-                return {**value, "already_running": True}
+                    value.get("compact_limit") == compact_limit and
+                    value.get("turn_id") == reader.turn and value.get("mode") == mode):
+                result = status(repo, identity)
+                if result["status"] == "failed":
+                    raise RelayError(result["reason"])
+                return {**result, "already_running": True}
             raise RelayError(f"Repository occupied by thread {value.get('thread_id', 'unknown')}; no takeover.")
-        reader = Rollout(rollout).bind(repo, identity)
         host_identity = process_identity(host_pid)
         if actual_thread:
             if not host_identity.endswith("/codex"):
@@ -85,14 +130,15 @@ def start_probe(repo, identity, rollout, host_pid, compact_limit, poll=1.0):
                   "turn_id": reader.turn, "rollout": str(reader.path),
                   "host_pid": host_pid, "host_identity": host_identity,
                   "compact_limit": compact_limit, "poll": poll,
-                  "nonce": nonce, "mode": UNVERIFIED, "protected": False}
+                  "nonce": nonce, "mode": mode, "protected": False,
+                  **({"capabilities": capabilities} if capabilities else {})}
         with lock(runtime / "control.lock"):
             old = read_json(marker_path(runtime, identity))
             if old and old.get("rollout") != config["rollout"]:
                 raise RelayError("Existing guard marker has a different binding; inspect it first.")
             write_json(marker_path(runtime, identity), {
                 **(old or {}), "thread_id": identity, "rollout": config["rollout"],
-                "guard_requested": True, "protected": False, "mode": UNVERIFIED,
+                "guard_requested": True, "protected": False, "mode": mode,
                 # A new watcher must be able to warn again. Idempotent starts
                 # return above; the thread's guard and hook receipts survive.
                 "notices": {},
@@ -116,7 +162,10 @@ def start_probe(repo, identity, rollout, host_pid, compact_limit, poll=1.0):
             if value.get("nonce") == nonce:
                 if value.get("status") == "failed":
                     raise RelayError(value.get("reason", "Watcher startup failed."))
-                return value
+                result = status(repo, identity)
+                if mode == PROTECTED and not result["protected"]:
+                    raise RelayError(result.get("reason", "Watcher did not become protected."))
+                return result
             if child.poll() is not None:
                 raise RelayError(f"Watcher failed to start; see {runtime / 'watcher.log'}")
             time.sleep(0.05)
@@ -173,6 +222,9 @@ def watch(repo, nonce):
                 if reader.ended or reader.turn != config["turn_id"]:
                     reason = "main-turn-ended"
                     break
+                if config["mode"] == PROTECTED:
+                    protection.check_runtime(runtime, config)
+                    value["protected"] = True
                 with lock(runtime / "control.lock"):
                     request = read_json(runtime / "stop.json", {})
                     if request.get("nonce") == nonce:
@@ -189,15 +241,18 @@ def watch(repo, nonce):
                     marker = read_json(marker_path(runtime, config["thread_id"]), {})
                     notice = marker.get("notices", {}).get("closeout")
                     if notice and notice["emitted"]:
-                        value["status"] = "warning-emitted-unverified"
+                        value["status"] = "warning-emitted" if config["mode"] == PROTECTED else "warning-emitted-unverified"
                     value["heartbeat_at"] = time.time()
                     write_json(runtime / "watcher.json", value)
                 time.sleep(config["poll"])
         except (RelayError, OSError, ValueError) as exc:
             reason, failed = str(exc), True
             print(f"research-relay UNPROTECTED: {reason}", file=sys.stderr, flush=True)
-            with lock(runtime / "control.lock"):
-                queue_notice(runtime, config["thread_id"], reason)
+            try:
+                with lock(runtime / "control.lock"):
+                    queue_notice(runtime, config["thread_id"], reason)
+            except (RelayError, OSError) as notice_error:
+                print(f"research-relay could not queue failure: {notice_error}", file=sys.stderr, flush=True)
         finally:
             with lock(runtime / "control.lock"):
                 write_json(runtime / "watcher.json", {**value,

@@ -12,6 +12,7 @@ import sys
 import time
 
 from . import hooks
+from .protection import fingerprint, hooks_path
 from .rollout import Rollout, locate
 from .state import RelayError, git, lock, marker_path, read_json, runtime_dir, thread_id, write_json
 
@@ -58,11 +59,14 @@ def arm(repo, identity, home):
         if marker.get("rollout", str(reader.path)) != str(reader.path):
             raise RelayError("Existing marker has another rollout binding.")
         probe = marker.get("delivery_probe")
-        if probe and probe["turn_id"] == reader.turn:
+        digest = fingerprint(hooks_path(repo))
+        if (probe and probe["turn_id"] == reader.turn
+                and probe.get("hooks_fingerprint") == digest):
             return {"status": "already-armed", "thread_id": identity, "protected": False}
         marker.update({"thread_id": identity, "rollout": str(reader.path),
                        "guard_requested": True, "protected": False,
                        "delivery_probe": {"token": secrets.token_hex(16), "turn_id": reader.turn,
+                                          "hooks_fingerprint": digest,
                                           "created_at": time.time(), "emitted": False, "acknowledged": False}})
         write_json(path, marker)
     # The token is deliberately not printed here. It must arrive through the hook.

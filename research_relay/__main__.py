@@ -6,20 +6,17 @@ import plistlib
 import subprocess
 import sys
 
-from . import hooks, links, notes, probes, watcher
-from .rollout import Rollout, locate
+from . import hooks, links, notes, probes, protection, watcher
+from .rollout import locate, threshold
 from .state import RelayError, thread_id
 
 
 ROOT = Path(__file__).resolve().parent.parent
-BLOCKERS = [
-    "Normal activation is not wired: start always rejects and readiness/status hard-code protected: false",
-]
 
 
 def doctor(repo, identity=None, home=None):
-    value = {"protected": False, "research_start": "blocked", "blockers": BLOCKERS,
-             "available": ["portable notes workflow", "experimental rollout + native-hook probe"],
+    value = {"protected": False, "research_start": "blocked", "blockers": [],
+             "available": ["portable notes workflow", "protected Desktop sidecar", "native-hook probe"],
              "notes": notes.inspect(repo)}
     for app in (Path("/Applications/ChatGPT.app"), Path("/Applications/Codex.app")):
         plist = app / "Contents/Info.plist"
@@ -32,33 +29,48 @@ def doctor(repo, identity=None, home=None):
                 result = subprocess.run([str(binary), "--version"], capture_output=True, text=True, timeout=10)
                 value["installed_app"]["bundled_cli"] = result.stdout.strip()
             break
-    if identity:
-        try:
-            reader = Rollout(locate(home, thread_id(identity))).bind(repo, identity)
-            value["binding"] = {"thread_id": identity, "turn_id": reader.turn,
-                                "rollout": str(reader.path), "meta": reader.meta,
-                                "latest_request_estimate": reader.usage}
-            value["hook_delivery"] = probes.inspect(repo, identity)
-        except (RelayError, OSError) as exc:
-            value["binding_error"] = str(exc)
+    try:
+        reader, checked = protection.environment(repo, identity, home)
+        value["binding"] = {"thread_id": identity, "turn_id": reader.turn,
+                            "rollout": str(reader.path), "meta": reader.meta,
+                            "latest_request_estimate": reader.usage}
+        value["compact_limit"] = checked["compact_limit"]
+        value["host_pid"] = checked["host_pid"]
+        value["verified_hooks"] = list(checked["capabilities"]["hooks"])
+        value["hook_delivery"] = probes.inspect(repo, identity)
+        protection.check_delivery(repo, reader)
+        if not reader.usage:
+            raise RelayError("Waiting for the first main-turn usage record.")
+        value["watcher"] = watcher.status(repo, identity)
+        active = value["watcher"]
+        if active.get("live") and not active["protected"]:
+            raise RelayError(active.get("reason", "An unprotected watcher occupies the repository; stop its owning turn first."))
+        value["protected"] = active["protected"]
+        value["research_start"] = "protected" if active["protected"] else "ready"
+        value["warn_at"] = threshold(reader.usage["window"], checked["compact_limit"])
+        if reader.usage["used"] >= value["warn_at"] or active.get("status", "").startswith("warning-"):
+            value["research_start"] = "closeout"
+    except (RelayError, OSError, ValueError, subprocess.SubprocessError) as exc:
+        value["blockers"].append(str(exc))
     return value
 
 
 def parser():
-    p = argparse.ArgumentParser(description="Research notes and an experimental Codex context sidecar; no LLM calls.")
+    p = argparse.ArgumentParser(description="Research notes and a scoped Codex context sidecar; no LLM calls.")
     sub = p.add_subparsers(dest="cmd", required=True)
     for command in ("doctor", "start", "probe-start", "status", "stop", "_watch", "notes", "hooks"):
         q = sub.add_parser(command)
         q.add_argument("--repo", default=".")
-        if command in ("doctor", "start", "probe-start", "stop", "hooks"):
+        if command in ("doctor", "start", "probe-start", "status", "stop", "hooks"):
             q.add_argument("--thread-id", default=os.environ.get("CODEX_THREAD_ID"))
-        if command in ("doctor", "probe-start", "hooks"):
+        if command in ("doctor", "start", "probe-start", "hooks"):
             q.add_argument("--codex-home", default=os.environ.get("CODEX_HOME", str(Path.home() / ".codex")))
         if command == "probe-start":
             q.add_argument("--rollout", type=Path)
             q.add_argument("--host-pid", type=int, required=True)
             q.add_argument("--compact-limit", type=int, required=True,
                            help="effective main-thread compaction ceiling; do not guess from model capacity")
+        if command in ("start", "probe-start"):
             q.add_argument("--poll", type=float, default=1.0)
         if command == "_watch":
             q.add_argument("--nonce", required=True)
@@ -81,16 +93,17 @@ def main(argv=None):
     try:
         if args.cmd == "doctor":
             value = doctor(args.repo, args.thread_id, args.codex_home)
-            code = 2
+            code = 0 if value["research_start"] in ("ready", "protected") else 2
         elif args.cmd == "start":
-            raise RelayError("Protected research start is unavailable in V1. Use notes independently; probe-start is diagnostic ONLY. " + "; ".join(BLOCKERS))
+            value = watcher.start(args.repo, args.thread_id, args.codex_home, args.poll)
+            code = 0 if value["protected"] and value["research_start"] == "protected" else 2
         elif args.cmd == "probe-start":
             identity = thread_id(args.thread_id)
             path = args.rollout or locate(args.codex_home, identity)
             value = watcher.start_probe(args.repo, identity, path, args.host_pid,
                                         args.compact_limit, args.poll)
         elif args.cmd == "status":
-            value = watcher.status(args.repo)
+            value = watcher.status(args.repo, args.thread_id)
         elif args.cmd == "stop":
             value = watcher.stop(args.repo, args.thread_id)
         elif args.cmd == "_watch":

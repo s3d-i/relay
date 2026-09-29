@@ -108,7 +108,7 @@ def handle(payload):
                     "and choose continuation, a handoff at a suitable boundary, or clarification. Briefly explain "
                     "your understanding and action without silently replacing the original goal."
                 )
-                if not owner or not locked(runtime / "watcher.lock"):
+                if not owner or not same_turn or not locked(runtime / "watcher.lock"):
                     feedback_context += " The watcher is not running; this turn is unprotected. Recheck activation conditions. The existing thread's PreCompact marker remains."
                 return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": feedback_context}}
             if not owner or not same_turn:
@@ -125,7 +125,7 @@ def handle(payload):
                 notice["emitted_at"] = time.time()
             write_json(marker_file, marker)
             # Emitted means returned to the hook runner, NOT acknowledged by the model.
-            return {"systemMessage": "research-relay: Experimental reminder emitted to the hook runner; protection remains unverified.",
+            return {"systemMessage": "research-relay: Closeout/failure reminder emitted to the hook runner.",
                     "hookSpecificOutput": {"hookEventName": "PostToolUse",
                     "additionalContext": "\n".join(n["reason"] + ": " + n["text"] for n in pending)}}
     except (RelayError, OSError, KeyError, TypeError) as exc:

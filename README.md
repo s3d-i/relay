@@ -19,8 +19,17 @@ Open a fresh session manually and invoke `$research-relay`. Read and align befor
 
 - [Skill](skills/research-relay/SKILL.md): resume research, respond to human intervention, and close out.
 - [Material convention](skills/research-relay/references/convention.md): preserve understanding, provenance, and useful connections.
-- [Sidecar](skills/research-relay/references/sidecar.md): experimental context reminders and their current limits.
+- [Sidecar](skills/research-relay/references/sidecar.md): protected activation, context reminders, and their limits.
 
 `notes init/status/links/commit` operates on the separate notes worktree. `links --path <file>` shows outgoing links and backlinks on demand, without storing a graph or judging research claims. Original human inputs stay in Git-ignored `artifacts/private/`; committing notes does not back them up.
 
-Normal sidecar activation is unfinished: `start` rejects every call and `doctor` reports blocked. Monitoring, native delivery, and compaction refusal have been exercised in the Desktop app; the current launch path is still `probe-start` for diagnostics. Usage silence retains the last observation, and pending reminders wait for the next hook boundary without a deadline. The material workflow works independently. Run `make check` for development checks.
+To enable protection inside the actual Desktop main chat, run:
+
+```sh
+python3 -m research_relay start --repo /absolute/path/research-project
+python3 -m research_relay doctor --repo /absolute/path/research-project
+```
+
+`start` discovers the current thread and Desktop host, resolves the explicit compaction ceiling, and checks that all six project Relay hooks are enabled and trusted. If native delivery has not been acknowledged in this turn, it arms a token check and returns `awaiting-native-delivery` (exit 2). Acknowledge only the token received through native hook context, then rerun `start`. Success reports `mode: protected`, `live: true`, and `protected: true`. Missing hook configuration can be prepared with `hooks prepare`; trust remains a native app setting.
+
+`doctor` distinguishes blocked, ready, protected, and closeout. The watcher revokes protection on hook/configuration changes, binding errors, or loss of the guard/delivery evidence. Usage silence retains the last observation, and pending reminders wait for the next hook boundary without a deadline. Stop/Interrupt/SessionEnd end monitoring; the thread's compaction guard remains. Each new main turn needs its own activation and delivery check. `probe-start` stays diagnostic and never reports protection. Run `make check` for development checks.
