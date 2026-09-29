@@ -10,9 +10,10 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import Mock, patch
 
 from research_relay import hooks, notes, watcher
-from research_relay.__main__ import main
+from research_relay.__main__ import doctor, main
 from research_relay.rollout import Rollout, threshold
 from research_relay.state import (RelayError, git, lock, locked, marker_path, read_json,
                                  runtime_dir, write_json)
@@ -218,12 +219,16 @@ class HookTests(RepositoryCase):
         with contextlib.redirect_stderr(output):
             code = main(["start", "--repo", str(self.repo), "--thread-id", T1])
         self.assertEqual(code, 2)
-        self.assertFalse(json.loads(output.getvalue())["protected"])
+        result = json.loads(output.getvalue())
+        self.assertFalse(result["protected"])
+        self.assertNotIn("delegation_policy", result)
 
 
 class NotesTests(RepositoryCase):
     def test_inactive_status_does_not_create_runtime(self):
-        self.assertEqual(watcher.status(self.repo)["status"], "inactive")
+        result = watcher.status(self.repo)
+        self.assertEqual(result["status"], "inactive")
+        self.assertNotIn("delegation_policy", result)
         self.assertFalse(self.runtime.exists())
 
     def test_isolated_branch_preserves_code_and_existing_notes(self):
@@ -365,6 +370,128 @@ class NotesTests(RepositoryCase):
         self.assertEqual(git(repo, "symbolic-ref", "HEAD"), "refs/heads/main")
 
 
+class ProtectedDelegationPolicyTests(RepositoryCase):
+    def setUp(self):
+        super().setUp()
+        self.checked = {"host_pid": 123, "compact_limit": 100000,
+                        "capabilities": {"hooks": {}}}
+        for target, kwargs in (
+            ("research_relay.watcher.process_identity", {"return_value": "fixture-host"}),
+            ("research_relay.watcher.protection.check_runtime", {"return_value": None}),
+            ("research_relay.watcher.protection.check_delivery", {"return_value": None}),
+            ("research_relay.watcher.protection.environment", {
+                "side_effect": lambda *args: (Rollout(self.rollout).bind(self.repo, T1), self.checked)}),
+        ):
+            patcher = patch(target, **kwargs)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def write_state(self, **changes):
+        value = {"thread_id": T1, "turn_id": "turn-1", "rollout": str(self.rollout),
+                 "host_pid": 123, "host_identity": "fixture-host", "compact_limit": 100000,
+                 "nonce": "fixture", "mode": watcher.PROTECTED, "status": "watching",
+                 "protected": True, **changes}
+        write_json(self.runtime / "watcher.json", value)
+        return value
+
+    def test_protected_start_and_idempotent_start_expose_output_only_policy(self):
+        # Simulate watcher readiness entirely inside this temporary repository.
+        # No Desktop capability checks, native hooks, or watcher processes run.
+        with contextlib.ExitStack() as stack:
+            child = Mock()
+
+            def launch(*args, **kwargs):
+                config = read_json(self.runtime / "launch.json")
+                stack.enter_context(lock(self.runtime / "watcher.lock"))
+                write_json(self.runtime / "watcher.json", {**config, "status": "watching", "pid": 456})
+                return child
+
+            runner = stack.enter_context(patch.object(watcher, "subprocess"))
+            runner.Popen.side_effect = launch
+            first = watcher.start(self.repo, T1, self.repo.parent)
+            second = watcher.start(self.repo, T1, self.repo.parent)
+            self.assertEqual(runner.Popen.call_count, 1)
+            self.assertTrue(second["already_running"])
+            for result in (first, second, watcher.status(self.repo, T1)):
+                self.assertTrue(result["live"])
+                self.assertTrue(result["protected"])
+                self.assertEqual(result["research_start"], "protected")
+                policy = result["delegation_policy"]
+                self.assertEqual(policy["enforcement"], "instruction-only")
+                self.assertEqual(policy["compliance"], "unverified")
+                self.assertEqual(policy["spawn_agent"], {"fork_turns": "none"})
+                self.assertEqual(policy["independent_tasks"], "new-agent")
+                self.assertEqual(policy["handoff"], "self-contained")
+            for path in ("launch.json", "watcher.json", f"threads/{T1}.json"):
+                self.assertNotIn("delegation_policy", read_json(self.runtime / path))
+
+    def test_policy_omitted_outside_live_protected_research_even_if_stored(self):
+        for mode, state, live in (
+            (watcher.PROTECTED, "inactive", False),
+            (watcher.PROTECTED, "stopped", False),
+            (watcher.PROTECTED, "failed", True),
+            (watcher.PROTECTED, "watching", False),
+            (watcher.UNVERIFIED, "watching", True),
+            (watcher.PROTECTED, "warning-pending", True),
+            (watcher.PROTECTED, "warning-emitted", True),
+            (watcher.PROTECTED, "warning-emitted-unverified", True),
+        ):
+            with self.subTest(mode=mode, state=state, live=live):
+                self.write_state(mode=mode, status=state, delegation_policy={"stale": True})
+                with lock(self.runtime / "watcher.lock") if live else contextlib.nullcontext():
+                    result = watcher.status(self.repo, T1)
+                self.assertNotIn("delegation_policy", result)
+                if state.startswith("warning-"):
+                    self.assertTrue(result["protected"])
+                    self.assertEqual(result["research_start"], "closeout")
+
+    def test_protection_failure_and_stop_remove_active_policy(self):
+        self.write_state()
+        with lock(self.runtime / "watcher.lock"):
+            self.assertIn("delegation_policy", watcher.status(self.repo, T1))
+            with patch.object(watcher.protection, "check_runtime", side_effect=RelayError("guard lost")):
+                result = watcher.status(self.repo, T1)
+            self.assertFalse(result["protected"])
+            self.assertEqual(result["status"], "failed")
+            self.assertNotIn("delegation_policy", result)
+            self.assertNotIn("delegation_policy", watcher.stop(self.repo, T1))
+            result = watcher.status(self.repo, T1)
+            self.assertFalse(result["protected"])
+            self.assertNotIn("delegation_policy", result)
+
+    def test_idempotent_closeout_start_omits_policy(self):
+        self.write_state(status="warning-pending")
+        with lock(self.runtime / "watcher.lock"):
+            result = watcher.start(self.repo, T1, self.repo.parent)
+        self.assertTrue(result["already_running"])
+        self.assertTrue(result["protected"])
+        self.assertEqual(result["research_start"], "closeout")
+        self.assertNotIn("delegation_policy", result)
+
+    def test_awaiting_delivery_omits_policy(self):
+        with patch.object(watcher.protection, "check_delivery", side_effect=RelayError("not acknowledged")), \
+                patch("research_relay.probes.arm", return_value={"protected": False}):
+            result = watcher.start(self.repo, T1, self.repo.parent)
+        self.assertEqual(result["status"], "awaiting-native-delivery")
+        self.assertNotIn("delegation_policy", result)
+        self.assertFalse(self.runtime.exists())
+
+    def test_doctor_omits_policy_including_newly_observed_closeout(self):
+        self.write_state()
+        with lock(self.runtime / "watcher.lock"), \
+                patch("research_relay.__main__.Path", return_value=self.repo / "no-app"), \
+                patch("research_relay.__main__.notes.inspect", return_value={}), \
+                patch("research_relay.__main__.probes.inspect", return_value={}):
+            for usage, expected in ((1000, "protected"), (65000, "closeout")):
+                with self.subTest(usage=usage):
+                    self.usage(usage)
+                    result = doctor(self.repo, T1, self.repo.parent)
+                    self.assertTrue(result["protected"])
+                    self.assertEqual(result["research_start"], expected)
+                    self.assertNotIn("delegation_policy", result)
+                    self.assertNotIn("delegation_policy", result["watcher"])
+
+
 class ProcessTests(RepositoryCase):
     def setUp(self):
         super().setUp()
@@ -390,11 +517,13 @@ class ProcessTests(RepositoryCase):
 
     def test_idempotent_across_worktrees_and_other_thread_busy(self):
         first = self.start()
+        self.assertNotIn("delegation_policy", first)
         linked = self.repo.parent / "linked"
         git(self.repo, "worktree", "add", "--detach", str(linked), "HEAD")
         second = self.start(linked)
         self.assertEqual(first["pid"], second["pid"])
         self.assertTrue(second["already_running"])
+        self.assertNotIn("delegation_policy", second)
         with self.assertRaises(RelayError):
             self.start(linked, T2)
         with self.assertRaises(RelayError):

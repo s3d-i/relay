@@ -51,6 +51,8 @@ def status(repo, identity=None):
         return {"status": "inactive", "protected": False}
     live = locked(runtime / "watcher.lock")
     value = read_json(runtime / "watcher.json", {})
+    # This instruction policy is output-only, never evidence of compliance.
+    value.pop("delegation_policy", None)
     value["live"] = live
     value["protected"] = False
     value.setdefault("status", "inactive")
@@ -74,6 +76,16 @@ def status(repo, identity=None):
         except (RelayError, OSError, ValueError, KeyError) as exc:
             value["status"], value["reason"] = "failed", str(exc)
     value["research_start"] = ("closeout" if value["status"].startswith("warning-") else "protected") if value["protected"] else "blocked"
+    if value["research_start"] == "protected":
+        value["delegation_policy"] = {
+            "enforcement": "instruction-only", "compliance": "unverified",
+            "spawn_agent": {"fork_turns": "none"},
+            "independent_tasks": "new-agent", "handoff": "self-contained",
+            "subagents": "research, experiments, code changes, and verification",
+            "main_agent": "coordinate, review evidence, maintain notes/lifecycle; "
+                          "spend most research execution time in event-based waits; "
+                          "do not start other substantive investigations or implement worker tasks while workers run",
+        }
     return value
 
 

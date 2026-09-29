@@ -42,6 +42,9 @@ def doctor(repo, identity=None, home=None):
         if not reader.usage:
             raise RelayError("Waiting for the first main-turn usage record.")
         value["watcher"] = watcher.status(repo, identity)
+        # Activation/status expose delegation instructions; this diagnostic can
+        # independently discover closeout from usage newer than watcher state.
+        value["watcher"].pop("delegation_policy", None)
         active = value["watcher"]
         if active.get("live") and not active["protected"]:
             raise RelayError(active.get("reason", "An unprotected watcher occupies the repository; stop its owning turn first."))
