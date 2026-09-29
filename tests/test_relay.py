@@ -14,7 +14,7 @@ import unittest
 from research_relay import hooks, notes, watcher
 from research_relay.__main__ import main
 from research_relay.rollout import Rollout, threshold
-from research_relay.state import (RelayError, git, locked, marker_path, read_json,
+from research_relay.state import (RelayError, git, lock, locked, marker_path, read_json,
                                  runtime_dir, write_json)
 
 
@@ -124,7 +124,7 @@ class RolloutTests(RepositoryCase):
         with self.assertRaises(RelayError):
             Rollout(self.rollout).bind(self.repo, T1)
 
-    def test_usage_without_timestamp_is_not_fresh(self):
+    def test_usage_without_timestamp_is_rejected(self):
         record = {"type": "event_msg", "payload": {"type": "token_count", "info": {
             "last_token_usage": {"input_tokens": 100, "output_tokens": 1, "total_tokens": 101},
             "model_context_window": 100000}}}
@@ -384,9 +384,9 @@ class ProcessTests(RepositoryCase):
             self.host.wait(timeout=5)
             super().tearDown()
 
-    def start(self, repo=None, identity=T1, stale=5):
+    def start(self, repo=None, identity=T1):
         return watcher.start_probe(repo or self.repo, identity, self.rollout,
-                                   self.host.pid, 100000, poll=0.05, stale=stale)
+                                   self.host.pid, 100000, poll=0.05)
 
     def test_idempotent_across_worktrees_and_other_thread_busy(self):
         first = self.start()
@@ -434,6 +434,23 @@ class ProcessTests(RepositoryCase):
         eventually(lambda: not locked(self.runtime / "watcher.lock"))
         self.assertEqual(watcher.status(self.repo)["reason"], "main-turn-ended")
 
+    def test_lifecycle_cleanup_survives_transcript_move(self):
+        for event in ("Stop", "Interrupt", "SessionEnd"):
+            with self.subTest(event=event):
+                watcher.start_probe(self.repo, T1, self.rollout, self.host.pid,
+                                    100000, poll=0.25)
+                self.hook(event)
+                archived = self.rollout.with_name("archived.jsonl")
+                self.rollout.rename(archived)
+                try:
+                    eventually(lambda: not locked(self.runtime / "watcher.lock"))
+                    state = watcher.status(self.repo)
+                    self.assertEqual(state["status"], "stopped")
+                    self.assertEqual(state["reason"], "stop-requested")
+                    self.assertTrue(marker_path(self.runtime, T1).exists())
+                finally:
+                    archived.rename(self.rollout)
+
     def test_user_interruption_exits_without_restart(self):
         self.start()
         self.append({"type": "turn_aborted", "turn_id": "turn-1"})
@@ -447,13 +464,64 @@ class ProcessTests(RepositoryCase):
         eventually(lambda: not locked(self.runtime / "watcher.lock"))
         self.assertFalse(watcher.status(self.repo)["protected"])
 
-    def test_stale_source_fails_visibly(self):
-        self.start(stale=0.5)
-        eventually(lambda: not locked(self.runtime / "watcher.lock"))
-        result = watcher.status(self.repo)
-        self.assertEqual(result["status"], "failed")
-        self.assertIn("stale", result["reason"])
-        self.assertIn("hookSpecificOutput", self.hook("PostToolUse"))
+    def test_usage_silence_keeps_last_estimate_and_watching(self):
+        records = [json.loads(line) for line in self.rollout.read_text().splitlines()]
+        records[-1]["timestamp"] = "2000-01-01T00:00:00+00:00"
+        self.rollout.write_text("".join(json.dumps(record) + "\n" for record in records))
+        first = self.start()
+        eventually(lambda: watcher.status(self.repo).get("heartbeat_at", 0) > first["heartbeat_at"])
+        state = watcher.status(self.repo)
+        self.assertTrue(state["live"])
+        self.assertEqual(state["status"], "watching")
+        self.assertEqual(state["usage"]["used"], 1000)
+        self.assertEqual(state["usage"]["observed_at"], records[-1]["timestamp"])
+        self.assertEqual(self.hook("PostToolUse"), {})
+        self.usage(2000)
+        eventually(lambda: watcher.status(self.repo).get("usage", {}).get("used") == 2000)
+
+    def test_waits_for_first_usage_record(self):
+        records = [json.loads(line) for line in self.rollout.read_text().splitlines()]
+        self.rollout.write_text("".join(json.dumps(record) + "\n" for record in records
+                                        if record["payload"].get("type") != "token_count"))
+        first = self.start()
+        eventually(lambda: watcher.status(self.repo).get("heartbeat_at", 0) > first["heartbeat_at"])
+        state = watcher.status(self.repo)
+        self.assertTrue(state["live"])
+        self.assertEqual(state["status"], "watching")
+        self.assertNotIn("usage", state)
+        self.assertEqual(self.hook("PostToolUse"), {})
+        self.usage(1000)
+        eventually(lambda: watcher.status(self.repo).get("usage", {}).get("used") == 1000)
+
+    def test_new_activation_rearms_failure_notice(self):
+        for activation in range(2):
+            with self.subTest(activation=activation):
+                self.write_rollout()
+                self.start()
+                with self.rollout.open("a") as out:
+                    out.write("invalid JSON\n")
+                eventually(lambda: not locked(self.runtime / "watcher.lock"))
+                state = watcher.status(self.repo)
+                self.assertEqual(state["status"], "failed")
+                self.assertIn("Malformed rollout", state["reason"])
+                self.assertIn("hookSpecificOutput", self.hook("PostToolUse"))
+                self.assertEqual(self.hook("PostToolUse"), {})
+                self.assertTrue(read_json(marker_path(self.runtime, T1))["guard_requested"])
+
+    def test_new_turn_rearms_closeout_notice(self):
+        for turn in ("turn-1", "turn-2"):
+            with self.subTest(turn=turn):
+                self.append({"type": "task_started", "turn_id": turn})
+                self.usage(65000)
+                first = self.start()
+                self.assertIn("hookSpecificOutput", self.hook("PostToolUse", turn_id=turn))
+                second = self.start()
+                self.assertEqual(first["pid"], second["pid"])
+                self.assertTrue(second["already_running"])
+                self.assertEqual(self.hook("PostToolUse", turn_id=turn), {})
+                self.hook("Stop", turn_id=turn)
+                eventually(lambda: not locked(self.runtime / "watcher.lock"))
+                self.assertFalse(self.hook("PreCompact", turn_id=turn)["continue"])
 
     def test_guard_lives_after_explicit_stop(self):
         self.start()
@@ -462,17 +530,25 @@ class ProcessTests(RepositoryCase):
         self.assertTrue(marker_path(self.runtime, T1).exists())
         self.assertFalse(self.hook("PreCompact", turn_id="future-turn")["continue"])
 
-    def test_missing_hook_delivery_fails_visibly(self):
+    def test_reminder_waits_for_delivery_without_deadline(self):
         self.start()
         self.usage(65000)
         eventually(lambda: watcher.status(self.repo).get("status") == "warning-pending")
-        from research_relay.state import lock
         with lock(self.runtime / "control.lock"):
             marker = read_json(marker_path(self.runtime, T1))
-            marker["notices"]["closeout"]["created_at"] = time.time() - 31
+            marker["notices"]["closeout"]["created_at"] = time.time() - 86400
             write_json(marker_path(self.runtime, T1), marker)
-        eventually(lambda: not locked(self.runtime / "watcher.lock"))
-        self.assertIn("delivery unavailable", watcher.status(self.repo)["reason"])
+            heartbeat = watcher.status(self.repo)["heartbeat_at"]
+        eventually(lambda: watcher.status(self.repo).get("heartbeat_at", 0) > heartbeat
+                   or watcher.status(self.repo)["status"] == "failed")
+        state = watcher.status(self.repo)
+        self.assertTrue(state["live"])
+        self.assertEqual(state["status"], "warning-pending")
+        self.assertNotIn("failure", read_json(marker_path(self.runtime, T1))["notices"])
+        self.assertIn("hookSpecificOutput", self.hook("PostToolUse"))
+        eventually(lambda: watcher.status(self.repo)["status"] == "warning-emitted-unverified")
+        self.assertTrue(watcher.status(self.repo)["live"])
+        self.assertEqual(self.hook("PostToolUse"), {})
 
     def test_dead_watcher_lock_released_and_guard_retained(self):
         first = self.start()

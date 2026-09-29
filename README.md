@@ -23,4 +23,4 @@ Open a fresh session manually and invoke `$research-relay`. Read and align befor
 
 `notes init/status/links/commit` operates on the separate notes worktree. `links --path <file>` shows outgoing links and backlinks on demand, without storing a graph or judging research claims. Original human inputs stay in Git-ignored `artifacts/private/`; committing notes does not back them up.
 
-Automatic protection is unfinished: `start` and `doctor` return exit code `2` and `protected: false`. The material workflow can be used independently; `probe-start` is only for integration diagnostics. Run `make check` for development checks. Passing tests does not establish protection in the real app.
+Normal sidecar activation is unfinished: `start` rejects every call and `doctor` reports blocked. Monitoring, native delivery, and compaction refusal have been exercised in the Desktop app; the current launch path is still `probe-start` for diagnostics. Usage silence retains the last observation, and pending reminders wait for the next hook boundary without a deadline. The material workflow works independently. Run `make check` for development checks.

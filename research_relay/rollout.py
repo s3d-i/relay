@@ -102,7 +102,7 @@ class Rollout:
                     if stamp.tzinfo is None:
                         raise ValueError("timestamp requires timezone")
                 except (KeyError, AttributeError, TypeError, ValueError) as exc:
-                    raise RelayError("Unknown usage timestamp; staleness cannot be verified.") from exc
+                    raise RelayError("Unknown usage timestamp; observation time cannot be recorded.") from exc
                 self.usage_timestamp = item["timestamp"]
                 return {"kind": "usage", **self.usage}
         return None

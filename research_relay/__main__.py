@@ -13,9 +13,7 @@ from .state import RelayError, thread_id
 
 ROOT = Path(__file__).resolve().parent.parent
 BLOCKERS = [
-    "Auto-triggered PreCompact prevention has not been verified in the Desktop app",
-    "Active-work user interruption and SessionEnd cleanup remain unverified",
-    "Continuous protection health checks and per-thread activation are not production-ready",
+    "Normal activation is not wired: start always rejects and readiness/status hard-code protected: false",
 ]
 
 
@@ -62,7 +60,6 @@ def parser():
             q.add_argument("--compact-limit", type=int, required=True,
                            help="effective main-thread compaction ceiling; do not guess from model capacity")
             q.add_argument("--poll", type=float, default=1.0)
-            q.add_argument("--stale", type=float, default=180.0)
         if command == "_watch":
             q.add_argument("--nonce", required=True)
         if command == "notes":
@@ -91,7 +88,7 @@ def main(argv=None):
             identity = thread_id(args.thread_id)
             path = args.rollout or locate(args.codex_home, identity)
             value = watcher.start_probe(args.repo, identity, path, args.host_pid,
-                                        args.compact_limit, args.poll, args.stale)
+                                        args.compact_limit, args.poll)
         elif args.cmd == "status":
             value = watcher.status(args.repo)
         elif args.cmd == "stop":

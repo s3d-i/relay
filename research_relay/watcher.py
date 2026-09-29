@@ -1,6 +1,5 @@
 """One finite watcher, no model calls, no steering, no runtime replacement."""
 
-from datetime import datetime, timezone
 import os
 from pathlib import Path
 import signal
@@ -29,7 +28,7 @@ CLOSEOUT = (
 
 
 def queue_notice(runtime, identity, reason):
-    """Must be called under control.lock. One notice per cause per opted-in thread."""
+    """Must be called under control.lock. One notice per cause per activation."""
     path = marker_path(runtime, identity)
     marker = read_json(path)
     if marker is None:
@@ -57,13 +56,13 @@ def status(repo):
     return value or {"status": "inactive", "live": live, "protected": False}
 
 
-def start_probe(repo, identity, rollout, host_pid, compact_limit, poll=1.0, stale=180.0):
+def start_probe(repo, identity, rollout, host_pid, compact_limit, poll=1.0):
     identity = thread_id(identity)
     actual_thread = os.environ.get("CODEX_THREAD_ID")
     if actual_thread and actual_thread != identity:
         raise RelayError("Requested thread differs from this execution's CODEX_THREAD_ID.")
-    if poll < 0.05 or stale <= poll:
-        raise RelayError("Invalid polling/staleness interval.")
+    if poll < 0.05:
+        raise RelayError("Invalid polling interval.")
     runtime = runtime_dir(repo)
     with lock(runtime / "start.lock"):
         if locked(runtime / "watcher.lock"):
@@ -85,7 +84,7 @@ def start_probe(repo, identity, rollout, host_pid, compact_limit, poll=1.0, stal
         config = {"repo": str(Path(repo).resolve()), "thread_id": identity,
                   "turn_id": reader.turn, "rollout": str(reader.path),
                   "host_pid": host_pid, "host_identity": host_identity,
-                  "compact_limit": compact_limit, "poll": poll, "stale": stale,
+                  "compact_limit": compact_limit, "poll": poll,
                   "nonce": nonce, "mode": UNVERIFIED, "protected": False}
         with lock(runtime / "control.lock"):
             old = read_json(marker_path(runtime, identity))
@@ -94,6 +93,9 @@ def start_probe(repo, identity, rollout, host_pid, compact_limit, poll=1.0, stal
             write_json(marker_path(runtime, identity), {
                 **(old or {}), "thread_id": identity, "rollout": config["rollout"],
                 "guard_requested": True, "protected": False, "mode": UNVERIFIED,
+                # A new watcher must be able to warn again. Idempotent starts
+                # return above; the thread's guard and hook receipts survive.
+                "notices": {},
             })
             write_json(runtime / "launch.json", config)
         log = (runtime / "watcher.log").open("ab")
@@ -147,40 +149,35 @@ def watch(repo, nonce):
             signal.signal(signum, lambda sig, frame: terminated.append(sig))
         reason, failed = "stopped", False
         reader = Rollout(config["rollout"])
-        last_usage_at = time.monotonic()
         try:
             reader.bind(repo, config["thread_id"])
             if reader.turn != config["turn_id"]:
                 raise RelayError("Main turn changed during startup.")
-            if reader.usage_timestamp:
-                try:
-                    age = (datetime.now(timezone.utc) - datetime.fromisoformat(
-                        reader.usage_timestamp.replace("Z", "+00:00"))).total_seconds()
-                    last_usage_at -= max(0, age)
-                except (ValueError, TypeError):
-                    raise RelayError("Missing/invalid usage timestamp.")
             value["status"] = "watching"
             while True:
                 if terminated:
                     reason = "watcher-signal"
                     break
-                if process_identity(config["host_pid"]) != config["host_identity"]:
-                    raise RelayError("Host identity changed; refusing reused PID.")
-                events = reader.poll()
-                if reader.compacted:
-                    raise RelayError("Compaction observed: guard did not protect this thread.")
-                if reader.ended or reader.turn != config["turn_id"]:
-                    reason = "main-turn-ended"
-                    break
-                if any(e["kind"] == "usage" for e in events):
-                    last_usage_at = time.monotonic()
+                # Native lifecycle hooks can request shutdown while the app moves
+                # the transcript into its archive. Honor that request before I/O.
                 with lock(runtime / "control.lock"):
                     request = read_json(runtime / "stop.json", {})
                     if request.get("nonce") == nonce:
                         reason = "stop-requested"
                         break
-                    if time.monotonic() - last_usage_at > config["stale"]:
-                        raise RelayError("Context telemetry stale; monitoring unavailable.")
+                if process_identity(config["host_pid"]) != config["host_identity"]:
+                    raise RelayError("Host identity changed; refusing reused PID.")
+                reader.poll()
+                if reader.compacted:
+                    raise RelayError("Compaction observed: guard did not protect this thread.")
+                if reader.ended or reader.turn != config["turn_id"]:
+                    reason = "main-turn-ended"
+                    break
+                with lock(runtime / "control.lock"):
+                    request = read_json(runtime / "stop.json", {})
+                    if request.get("nonce") == nonce:
+                        reason = "stop-requested"
+                        break
                     if reader.usage:
                         limit = threshold(reader.usage["window"], config["compact_limit"])
                         value["usage"] = {**reader.usage, "warn_at": limit,
@@ -191,11 +188,8 @@ def watch(repo, nonce):
                             value["status"] = "warning-pending"
                     marker = read_json(marker_path(runtime, config["thread_id"]), {})
                     notice = marker.get("notices", {}).get("closeout")
-                    if notice:
-                        if notice["emitted"]:
-                            value["status"] = "warning-emitted-unverified"
-                        elif time.time() - notice["created_at"] > 30:
-                            raise RelayError("Reminder not emitted by a hook within 30s; delivery unavailable.")
+                    if notice and notice["emitted"]:
+                        value["status"] = "warning-emitted-unverified"
                     value["heartbeat_at"] = time.time()
                     write_json(runtime / "watcher.json", value)
                 time.sleep(config["poll"])
