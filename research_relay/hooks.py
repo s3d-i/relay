@@ -1,6 +1,8 @@
 """Native hook boundary. This module never performs research or restarts a turn."""
 
 from pathlib import Path
+import shlex
+import sys
 import time
 
 from .state import (RelayError, lock, locked, marker_path, read_json,
@@ -27,6 +29,12 @@ def handle(payload):
             transcript = payload.get("transcript_path")
             if transcript and str(Path(transcript).resolve()) != marker["rollout"]:
                 return {}  # A child can share session_id and cwd; its transcript differs.
+            # A bounded last-receipt per event, never a transcript/event database.
+            if transcript:
+                marker.setdefault("hook_receipts", {})[event] = {
+                    "turn_id": payload.get("turn_id"), "reported_at": time.time(),
+                    **({"trigger": payload.get("trigger")} if event == "PreCompact" else {})}
+                write_json(marker_file, marker)
             if event == "PreCompact":
                 # Deliberately survives watcher exit, turn changes and application restarts.
                 # Missing transcript is ambiguous inside this opted-in scope: stop safely.
@@ -37,6 +45,21 @@ def handle(payload):
             # Delivery/cleanup requires exact transcript binding, not only a parent id.
             if not transcript:
                 return {"systemMessage": "research-relay：缺少主会话 transcript 绑定；自动提醒不可用。"}
+            probe = marker.get("delivery_probe")
+            if (event == "PostToolUse" and probe and not probe["emitted"] and
+                    probe["turn_id"] == payload.get("turn_id")):
+                probe.update(emitted=True, emitted_at=time.time())
+                write_json(marker_file, marker)
+                script = Path(__file__).resolve().parents[1] / "skills/research-relay/scripts/relay.py"
+                ack_command = shlex.join([sys.executable, str(script), "hooks", "ack",
+                                          "--repo", payload["cwd"], "--thread-id", payload["session_id"],
+                                          "--token", probe["token"]])
+                return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": (
+                    "research-relay native delivery diagnostic. This is only a delivery check, not a research task. "
+                    f"The delivery token is {probe['token']}. "
+                    "If you actually received this text through the native hook, acknowledge it with:\n"
+                    f"{ack_command}\n"
+                    "Do not acknowledge by reading the marker file. This does not establish no-compaction protection.")}}
             value = read_json(runtime / "watcher.json", {})
             owner = value.get("thread_id") == payload["session_id"]
             same_turn = payload.get("turn_id") == value.get("turn_id")
@@ -47,10 +70,15 @@ def handle(payload):
                         return {"continue": False, "stopReason": "research-relay main turn is finished"}
                 return {}  # Never decision:block, never a continuation prompt.
             if event == "UserPromptSubmit":
+                feedback_context = (
+                    "research-relay 人类反馈：保存原始 prompt；先区分待验证想法、明确改向与立即停止。"
+                    "普通新想法先进入相关 artifact，不自动中断或重排正在执行的研究。"
+                    "明确停止立即处理；否则结合 subagent 实际进度选择继续、边界交接或澄清。"
+                    "向人简述理解和本次动作，不把新反馈悄悄变成替代原目标的任务。"
+                )
                 if not owner or not locked(runtime / "watcher.lock"):
-                    return {"hookSpecificOutput": {"hookEventName": event,
-                            "additionalContext": "research-relay watcher 未运行；不要把本 turn 当作受保护研究。重新执行 skill 的启用检查；旧会话的 PreCompact 标记仍保留。"}}
-                return {}
+                    feedback_context += " watcher 未运行；本 turn 未受保护，重新检查启用条件；旧会话 PreCompact 标记仍保留。"
+                return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": feedback_context}}
             if not owner or not same_turn:
                 return {}
             if not locked(runtime / "watcher.lock") and value.get("status") not in ("stopped", "failed"):

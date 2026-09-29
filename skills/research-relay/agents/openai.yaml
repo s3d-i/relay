@@ -4,4 +4,3 @@ interface:
   default_prompt: "使用 $research-relay 阅读研究材料，与我对齐本次方向，并先检查当前环境的保护能力。"
 policy:
   allow_implicit_invocation: false
-

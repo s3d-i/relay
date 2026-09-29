@@ -6,7 +6,7 @@ import plistlib
 import subprocess
 import sys
 
-from . import hooks, notes, watcher
+from . import hooks, notes, probes, watcher
 from .rollout import Rollout, locate
 from .state import RelayError, thread_id
 
@@ -16,7 +16,6 @@ BLOCKERS = [
     "Desktop PostToolUse additionalContext delivery has not been verified",
     "Desktop trusted PreCompact blocking (manual AND auto) has not been verified",
     "Desktop Stop/Interrupt/SessionEnd execution has not been verified",
-    "No supported connection to the current Desktop-owned stdio App Server",
 ]
 
 
@@ -41,6 +40,7 @@ def doctor(repo, identity=None, home=None):
             value["binding"] = {"thread_id": identity, "turn_id": reader.turn,
                                 "rollout": str(reader.path), "meta": reader.meta,
                                 "latest_request_estimate": reader.usage}
+            value["hook_delivery"] = probes.inspect(repo, identity)
         except (RelayError, OSError) as exc:
             value["binding_error"] = str(exc)
     return value
@@ -49,12 +49,12 @@ def doctor(repo, identity=None, home=None):
 def parser():
     p = argparse.ArgumentParser(description="Research notes and an experimental Codex context sidecar; no LLM calls.")
     sub = p.add_subparsers(dest="cmd", required=True)
-    for command in ("doctor", "start", "probe-start", "status", "stop", "_watch", "notes"):
+    for command in ("doctor", "start", "probe-start", "status", "stop", "_watch", "notes", "hooks"):
         q = sub.add_parser(command)
         q.add_argument("--repo", default=".")
-        if command in ("doctor", "start", "probe-start", "stop"):
+        if command in ("doctor", "start", "probe-start", "stop", "hooks"):
             q.add_argument("--thread-id", default=os.environ.get("CODEX_THREAD_ID"))
-        if command in ("doctor", "probe-start"):
+        if command in ("doctor", "probe-start", "hooks"):
             q.add_argument("--codex-home", default=os.environ.get("CODEX_HOME", str(Path.home() / ".codex")))
         if command == "probe-start":
             q.add_argument("--rollout", type=Path)
@@ -69,6 +69,9 @@ def parser():
             q.add_argument("action", choices=("init", "status", "commit"))
             q.add_argument("--path", action="append", default=[])
             q.add_argument("-m", "--message", default="")
+        if command == "hooks":
+            q.add_argument("action", choices=("prepare", "probe", "ack", "status"))
+            q.add_argument("--token", default="")
     sub.add_parser("hook")
     sub.add_parser("render-hooks")
     return p
@@ -98,6 +101,15 @@ def main(argv=None):
             value = hooks.handle(json.load(sys.stdin))
         elif args.cmd == "render-hooks":
             value = hooks.configuration(sys.executable, ROOT / "skills/research-relay/scripts/relay.py")
+        elif args.cmd == "hooks":
+            if args.action == "prepare":
+                value = probes.prepare(args.repo)
+            elif args.action == "probe":
+                value = probes.arm(args.repo, args.thread_id, args.codex_home)
+            elif args.action == "ack":
+                value = probes.acknowledge(args.repo, args.thread_id, args.token)
+            else:
+                value = probes.inspect(args.repo, args.thread_id)
         elif args.cmd == "notes":
             if args.action == "init":
                 value = notes.init(args.repo)
@@ -117,4 +129,3 @@ def main(argv=None):
 
 if __name__ == "__main__":
     sys.exit(main())
-

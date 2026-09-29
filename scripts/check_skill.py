@@ -13,4 +13,3 @@ for file in [*skill.rglob("*.md"), *(root / "examples").rglob("*.md")]:
         if not target.startswith(("http:", "https:", "#")):
             assert (file.parent / target.split("#")[0]).exists(), (file, target)
 print("Skill metadata, launcher and local Markdown links: OK (static checks only)")
-

@@ -11,4 +11,3 @@ print("SIMULATION ONLY: fixture token events + direct hook calls; no Desktop int
 suite = unittest.TestSuite([ProcessTests("test_threshold_hook_and_stop_process_loop")])
 result = unittest.TextTestRunner(verbosity=2).run(suite)
 sys.exit(0 if result.wasSuccessful() else 1)
-

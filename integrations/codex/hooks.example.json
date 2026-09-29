@@ -9,4 +9,3 @@
     "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 /ABSOLUTE/relay/skills/research-relay/scripts/relay.py hook", "timeout": 5, "additionalContextLimit": 1500}]}]
   }
 }
-

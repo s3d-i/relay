@@ -9,6 +9,8 @@ description: 接续以 RESEARCH.md 和 linked artifacts 保存的长期研究，
 
 主 agent 负责与人对接、理解研究、保存反馈和决定交接时机。具体调查、代码研究和实验由**按需 subagent** 执行，默认一次一个；没有 subagent 工具时如实说明并请求用户选择执行方式，不自行变回长期 researcher。主 agent 不是常驻 supervisor，收尾后同样停止。
 
+这里的 continuation 是**研究问题的延续**：对齐方向 → 委派一个有界调查 → 接住人类反馈 → 审查结果与补充 notes → 在方向明确且保护健康时推进下一个问题。一个 subagent 结束不代表本次研究 turn 必须结束；也不需要人每完成一步都重新批准。需要人作决定、收到停止要求或进入收尾时才退出这个循环。跨会话的延续由人手动 fresh 后读取 notes 完成，不依赖旧 agent 存活。
+
 ## 接续或首次建立材料
 
 1. 从本 skill 路径找到 `scripts/relay.py`，执行 `python3 <skill>/scripts/relay.py notes --repo <研究仓库> status`。它定位独立的 `relay-notes` branch/worktree，不切换代码工作区。检查未提交/已暂存 notes；它们可能是上次提交失败留下的草稿，不丢弃、不覆盖。已有研究入口在其他位置时先读原入口，与用户对齐迁移范围，不新建第二套真相。
@@ -24,6 +26,8 @@ description: 接续以 RESEARCH.md 和 linked artifacts 保存的长期研究，
 
 区分待验证的怀疑、明确调整优先级、立即停止指令。明确决定直接保存并采用；含糊且可能改变方向的反馈先澄清。新想法不是自动中断 subagent 的新任务。主 agent 根据当前安全边界决定继续当前有界任务、请求 partial result 后交接，或按明确停止指令立即停止；向人简述原因。不声称能改变 Codex 输入框原生的中断语义，只减少对研究执行 subagent 的不必要 steering。
 
+处理执行中新反馈时，先核对执行者的实际状态，给人简短回执：你怎样理解这句话、正在做的工作停在哪里、你准备采取什么动作。把原话及决定写进相关 artifact，然后才将必要的变化传给执行者；明确的立即停止优先于写作。可疑的新解释先留为待检验问题，不能默默替换正在推进的目标。若主 turn 已被原生中断，不假定 subagent 随之停止：重新核查、收取 partial result 并处理归属。
+
 委派时给 subagent：本次问题、必要证据引用、允许改动的范围、具体可核查交付和停止边界。默认不给完整旧 transcript，不让它自行扩成多层调度。要求边做边保存有价值的观察与失败路径，并报告训练进程、输出位置、代码/实验身份和未完成点。主 agent 检查结果的证据强度后整合。重要人类反馈及时传达给相关执行者，不将所有新想法自动广播。
 
 ## 进入研究前的能力门槛
@@ -33,6 +37,8 @@ description: 接续以 RESEARCH.md 和 linked artifacts 保存的长期研究，
 **当前 V1 的 `start` 有意返回失败：本机 Desktop 的原生 hook 送达、信任和 PreCompact 阻断尚未完成实际验收。** 不把 watcher 活着、配置存在或测试通过当作保护。说明限制，可完成阅读、对齐、整理现有 notes；不要自动退到未受保护的长期研究。用户可单独选择可移植的文档工作流，但这不是受保护模式。
 
 `probe-start` 是集成诊断，不是研究启用捷径。只有明确的集成验证任务才按项目 README 使用它。它永远显示 `experimental-unprotected` / `protected: false`。不提高 compaction 阈值、不改全局审批、不绕过 hook trust，不修改私有数据库。
+
+集成诊断可以使用 `hooks prepare` 准备项目配置，再通过 app 原生设置审查信任；`hooks probe` 将一次性标记经当前 app 的 PostToolUse 送达，实际收到后才 `hooks ack`。不要读取本地 marker 的标记伪造送达，也不要把手动执行 hook 的测试当作 app 事件。送达成功仍不代表 PreCompact 已通过验证；没有 App Server socket 本身不是采用原生 hooks 的障碍。
 
 受保护路径未来通过验收后：对齐完才启动，同主会话幂等启用，另主会话占用时报告并等待人类处理，不抢占；主 turn 结束 watcher 退出，后续研究 turn 重新执行启用检查。原主会话的 no-compaction 标记跨 watcher 退出保留，作用范围按 thread 明确限定。当前实现绝不能把该预期写成已验证事实。
 
@@ -49,4 +55,3 @@ description: 接续以 RESEARCH.md 和 linked artifacts 保存的长期研究，
 3. 更新总文档的当前理解与停留位置，补齐 artifacts、原始人类 prompt、未解决问题、证据强度和下一步具体检查点。不美化不确定性，不新增 Run/Generation、manifest 或研究版本号。
 4. 执行 `notes ... status`，逐文件审查 diff，确认无秘密、无大数据、无他人改动。使用 `notes ... commit --path RESEARCH.md --path artifacts/<相关文件>.md -m '<研究问题与变化>'` 精确提交。检查返回 commit 和 remaining。默认不 push，不 reset。失败就保留草稿与暂存区，说明失败和路径；下次启动先发现它，不能声称 handoff 已完成。
 5. 执行 `... stop --repo <研究仓库>`（只请求本 thread 的 watcher 退出），核实 status 不再 live；原生 Stop/Interrupt/SessionEnd 是自动退出的目标路径，不通过阻止 Stop 强制继续。最终简述已保存材料、commit/草稿、仍在运行的训练和未完成问题，然后结束 turn。下一次由人类手动 fresh 会话开始。
-

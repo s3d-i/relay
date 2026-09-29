@@ -9,4 +9,3 @@ doctor:
 	$(PYTHON) -m research_relay doctor
 demo:
 	$(PYTHON) scripts/demo.py
-

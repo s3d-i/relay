@@ -31,4 +31,3 @@ try:
 except (RelayError, OSError) as exc:
     print(str(exc), file=sys.stderr)
     sys.exit(2)
-

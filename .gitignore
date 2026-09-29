@@ -3,4 +3,4 @@ __pycache__/
 .venv/
 .DS_Store
 .agents/skills/research-relay
-
+.codex/hooks.json

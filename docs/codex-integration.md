@@ -23,6 +23,23 @@
 | `Interrupt`、`SessionEnd` | 官方定义主线程中断/结束，不用于 subagents，短 timeout | 只完成程序级模拟 | 原生 hook 写 scoped stop 请求；无 restart |
 | `SubagentStop` | 不是主 turn 结束，且子任务 hook 的 session_id 可为 parent ID | 已测试模拟相同 parent ID 不会误停主 watcher | 不挂此 hook 作 cleanup；由主 agent 核查执行者 |
 
+## 后续核验：原生 hook 握手不需要附接 socket
+
+本次后续核验以最初实现为基线。主动输入要求继续推进研究，并保留人类反馈、notes 交接和手动 fresh 的边界；见[私密、本地主动输入记录](../artifacts/private/human-inputs/01a0eb31-2655-78b1-967a-bbaee34f7c31.md#prompt-1)。
+
+因此把“研究问题继续推进”与“旧执行身份继续存活”分开：一个 subagent 结束后，主 agent 可以审查结果、更新 notes 并继续下一个有界问题；人类反馈先由主 agent 保存、澄清与决定如何交给执行者。上下文接近边界时整体收尾，下一次由人手动 fresh。没有新增自动会话循环或反馈调度数据库。
+
+进一步只读核验定位到安装版精确源码 tag `rust-v0.158.0-alpha.2.1`，commit `0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807`：
+
+- [配置 schema](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/core/config.schema.json#L2045) 支持 `hooks.state.<key>.trusted_hash`；[信任来源规则](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/hooks/src/config_rules.rs#L8) 只接受 user/sessionFlags，项目不能自我信任。安装 app 的 `app-initial-d817715f10a0.js` 中 `dGa/uGa` 使用 `hooks/list` 的 key/currentHash，调用 `config/batchWrite` 写 trusted_hash 并传 `reloadUserConfig:true`。这是一条原生信任路径，不是 bypass。
+- [config_processor.rs](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/app-server/src/request_processors/config_processor.rs#L356) 只刷新**当前处理进程**持有的线程；[session/mod.rs](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/core/src/session/mod.rs#L2060) 重建并替换 hooks。普通工具使用已加载 hooks，未证明每 turn/tool 自动重读磁盘。另一个管理进程写用户配置，不能证明 app 里的旧 thread 已更新。
+- 设置页 “Reload hooks” 只重新发现；[catalog_processor.rs](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/app-server/src/request_processors/catalog_processor.rs#L614) 不刷新活动线程。没有在有限安装包检查中证实外部配置改动会自动传播到当前 app。信任定义的 hash [不包含脚本内容](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/hooks/src/engine/discovery.rs#L766)，因此列表显示 trusted 也不是脚本健康证据。
+- [hook_runtime.rs](https://github.com/openai/codex/blob/0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807/codex-rs/core/src/hook_runtime.rs#L392) 区分主线程 Stop 与 ThreadSpawn 的 SubagentStop，Interrupt hook 跳过子代理。没有在核心 interrupt 路径看到后代遍历，app 更高层是否级联仍未证实；主 turn 停止不能替代对子任务的实际停止检查。
+
+本轮已用 `hooks prepare` 创建当前仓库的本地配置（不提交机器路径），并用**内嵌二进制的一次独立只读配置查询**执行 `initialize`、`hooks/list`：六个项目 hook 均 enabled、untrusted，无配置错误/警告。没有调用 thread/start/resume、turn/start、模型或配置写接口，该管理进程已退出。此结果只证明配置可发现，不冒充当前 app 的真实 hook 执行。
+
+已增加 `hooks probe/status/ack`：随机标记只通过匹配主 thread/turn/transcript 的 PostToolUse 返回，主 agent 实际收到后确认；本地 status 不输出标记，回执不保存 prompt/工具正文。它把“handler 报告执行”“模型确认收到”“PreCompact 真正阻断”分开，任何一项都不能替代下一项。人工直接调用 hook 仍是模拟，确认也不会放开 `start`。项目缺少 socket 已从必须阻塞项移除；当前阻塞是 app 内的原生信任/加载和实际保护验收。
+
 ## 本地只读核验
 
 本机 app：`/Applications/ChatGPT.app`，Info.plist 的 `CFBundleShortVersionString=26.924.22138`、`CFBundleVersion=11645`。运行的 Codex 二进制为 app 内的 `Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`，`--version` 为 `0.158.0-alpha.2.1`。PATH 上 `/opt/homebrew/bin/codex` 指向 `0.155.1`，未作为桌面能力依据。
@@ -56,7 +73,7 @@
 
 No-compaction marker 位于 Git common directory 内，按 thread 隔离，watcher 退出不清除。未来仍需证明老 thread 在后续 turn、watcher 退出甚至 app 重启后都经过同一个已信任的 PreCompact 路径。保护 marker 不是研究生命周期对象，也不是安全边界本身。
 
-## 已执行验证
+## 基线已执行验证
 
 - 最终 `make check`：**40 项 unittest 全部通过**（5.013 秒），另有静态 skill 检查。使用临时真实 Git 仓库与独立进程；token 事件和 hook stdin 是 fixture。包括独立 notes branch、代码工作区保留、显式文件提交、真实失败 pre-commit 保留草稿、跨 worktree 唯一性、并发幂等、绑定拒绝、提醒去重、提醒超时、watcher 崩溃与退出、损坏 guard 状态及生产启动门槛。
 - `make demo` 的模拟闭环通过：独立 watcher 进程处理 fixture token 事件，直接调用 hook 后停止；输出明确标为 SIMULATION ONLY。
@@ -81,3 +98,5 @@ No-compaction marker 位于 Git common directory 内，按 thread 隔离，watch
 6. 人手动 fresh，新 agent 不读 transcript，只读两层材料，能发现未提交草稿、过期结论、活动训练和新反馈，并先对齐方向。
 
 当前没有可调用的宿主 hook trust/会话注入接口，也没有已连接到 app-owned stdio 的受支持通道；不能自动代替人信任 hook。故 V1 的生产 `start` 硬性拒绝，不提供填写“verified=true”的开关。只有补齐真实证据并实现可持续检测保护失效的机制，才能修改这个门槛；不以单次成功或设置更大 context 代替。
+
+本次后续验证补充：新握手和配置准备测试覆盖同线程幂等、旧 turn/子线程拒绝、标记不出现在 status、收到回执不等于保护、现有配置保留、项目配置 symlink 防逃逸和 prompt/工具正文不被诊断记录采集；完整测试与官方 skill 校验通过。新增的配置管理查询已退出，没有启动研究或 watcher。独立行为试用确认“loss 新想法但先别打断”不改写当前任务，“马上停”则优先停止并诚实核查 partial result；这仍是只读演练，不是实际训练停止验证。

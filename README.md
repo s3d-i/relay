@@ -12,6 +12,8 @@
 
 新想法先作为研究资产保存，区分怀疑、优先级决定和停止要求。主 agent 决定在什么边界传给执行者、继续现有有界调查，或收回 partial result 后停止。明确停止立即采用；含糊而会改变方向的意见先澄清。这个约定减少不必要地 steer 执行研究的 subagent，**不改写或保证 Codex 原生输入框的中断语义**。
 
+Continuation 保留在研究层：主 agent 审查一个有界任务的结果、及时补 notes，在方向仍明确且保护健康时继续下一个问题，不要求人每一步重新批准，也不因一个 subagent 结束就创建新会话。人类的 custom steer 先由主 agent 给出简短回执——怎样理解、当前执行到哪里、准备采取什么动作——然后保存原话并决定如何传给执行者。新想法不自动覆盖原目标；明确的立即停止优先。跨会话仍由人手动 fresh，notes 是继续理解的依据。
+
 完整 expected UX：
 
 1. 人手动 fresh 会话 → `$research-relay`。
@@ -108,7 +110,20 @@ python3 -m research_relay notes --repo /absolute/path/research-project commit \
 python3 -m research_relay render-hooks > /tmp/research-relay-hooks.json
 ```
 
-生成包含实际 Python 和脚本绝对路径的配置。**这是待审查文件，不会自动安装。** 确需做集成验证时，将相关条目合并进研究项目 `.codex/hooks.json`，保留现有 hook；确保项目配置层被信任，再在 app 的 Hooks 设置中审查/信任具体定义。仅 project trusted 或 JSON 存在不等于 hook trusted。此处 UI 入口只在安装包中发现，实际 trust 操作未验证；若当前 app 无法完成，记录为阻塞，不用 CLI 的信任状态替代证据，不 bypass trust。
+生成包含实际 Python 和脚本绝对路径的待审查配置。也可执行 `python3 -m research_relay hooks prepare --repo /absolute/path/research-project`，直接准备项目 `.codex/hooks.json`；已有不同配置时拒绝覆盖，需人工合并，绝不自动信任。这个本地文件含机器路径，本仓库将其忽略。确保项目配置层被信任，再在**当前 app** 的 Hooks 设置中审查/信任具体定义。仅 project trusted 或 JSON 存在不等于 hook trusted。
+
+已核验当前 app 的原生信任路径是 `hooks/list` 获取定义 hash，再用 `config/batchWrite` 保存并刷新该 app 管理的会话；不是绕过信任。另起进程写相同配置不意味着现有 app 会话已刷新。因此没有控制 socket **并不阻止原生 hook 路径**，也不需要自建 runtime；当前仍需在 app 实际完成审查/信任和送达验收。源码边界见[集成记录](docs/codex-integration.md)。
+
+安装/信任后，用当前主会话做一次送达握手（仅诊断）：
+
+```sh
+python3 -m research_relay hooks probe --repo /absolute/path/research-project
+# 在同一 app turn 执行一个普通工具。原生 PostToolUse 应送入一次性标记。
+python3 -m research_relay hooks status --repo /absolute/path/research-project
+# 只有主 agent 真正从 hook context 收到标记，才按其提示执行 hooks ack --token ...。
+```
+
+probe 的启动输出和 status 都不暴露标记；禁止从 marker 文件读它冒充收到消息。回执绑定主 thread/turn/transcript，记录各 hook 的最后一次报告，未保存聊天或工具正文；`UserPromptSubmit` 只给主 agent 一个静态反馈处理提示，不调用 LLM、判断语义或自动 steer subagent。`acknowledged-by-caller` 仍不等于 PreCompact 验收成功，`protected` 保持 false。下一 turn 需重新 arm 诊断，不能用旧标记证明新 turn 的送达。直接执行 hook 或测试 fixture 都仍是模拟。
 
 诊断启动为该 **repo + 主 thread ID** 留下一个持久的 `guard_requested` 标记，后续匹配的 `PreCompact` 对 auto/manual 都返回 `continue: false`。标记独立于 watcher，Stop/崩溃/重新开 app 后仍保留，不影响其他 thread。子会话有不同 transcript，不给它冒充主会话保护；本版没有证明子 agent 的 compaction 防护，研究启动门槛也未放开。
 
@@ -150,4 +165,3 @@ python3 -m research_relay stop --repo /absolute/path/research-project \
 只读真实 app 检查已确认版本/进程/stdio、当前会话 metadata 与用量字段、安装组件生成的协议 schema。独立 subagent 只读示例材料的试用完成，能准确解释证据边界；它不是实际 fresh 主会话，也不证明 app 集成。详细结果与剩余验收见 [集成记录](docs/codex-integration.md)。
 
 本项目不自建模型调用链、工具执行器、sandbox、审批系统、聊天 UI、训练平台或通用 adapter framework。没有自动 push，没有私有数据库写入，没有 GUI 自动点击，没有常驻 LLM supervisor。
-
