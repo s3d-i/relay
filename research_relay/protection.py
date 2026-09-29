@@ -34,6 +34,34 @@ def hooks_path(repo):
     return Path(git(repo, "rev-parse", "--show-toplevel")) / ".codex/hooks.json"
 
 
+def hook_fingerprint(repo):
+    """Bind native delivery to Relay definitions, not the surrounding hook file."""
+    config = read_json(hooks_path(repo))
+    if config is None:
+        return None
+    command = [sys.executable, str(ROOT / "skills/research-relay/scripts/relay.py"), "hook"]
+    definitions = {}
+    for event in EVENTS:
+        matches = []
+        for group in config.get("hooks", {}).get(event[0].upper() + event[1:], []):
+            for handler in group.get("hooks", []):
+                if handler.get("type") != "command":
+                    continue
+                raw_command = handler.get("command")
+                if not isinstance(raw_command, str):
+                    continue
+                try:
+                    args = shlex.split(raw_command)
+                except ValueError:
+                    continue  # An unrelated command cannot attest Relay delivery.
+                if args == command:
+                    matcher = group.get("matcher")
+                    matches.append({"matcher": "*" if matcher in (None, "", "*") else matcher,
+                                    "handler": {**handler, "command": command}})
+        definitions[event] = matches
+    return hashlib.sha256(json.dumps(definitions, sort_keys=True).encode()).hexdigest()
+
+
 def desktop_host():
     """Discover only this execution's ancestor, never the newest process/session."""
     pid = os.getpid()
@@ -155,17 +183,9 @@ def validate_capabilities(repo, config, listing, requirements):
     return limit, verified
 
 
-def environment(repo, identity, home):
-    identity = thread_id(identity)
-    if os.environ.get("CODEX_THREAD_ID") != identity:
-        raise RelayError("Protected start requires this execution's exact CODEX_THREAD_ID.")
-    repo, home = Path(repo).resolve(), Path(home).resolve()
-    reader = Rollout(locate(home, identity)).bind(repo, identity)
-    pid, executable = desktop_host()
-    overrides = host_overrides(pid, executable)
-    config, listing, requirements = read_capabilities(repo, home, executable, overrides)
-    limit, verified = validate_capabilities(repo, config, listing, requirements)
-    # Snapshot inputs, not their private contents. Any change requires rechecking.
+def capability_files(repo, home, config):
+    # Fingerprints trigger a scoped capability recheck, not automatic revocation.
+    # Keep private configuration contents and launch overrides out of state files.
     paths = {home / "config.toml", home / "hooks.json", home / "requirements.toml",
              Path("/etc/codex/requirements.toml"), hooks_path(repo)}
     for layer in config.get("layers") or []:
@@ -176,10 +196,25 @@ def environment(repo, identity, home):
         if name.get("dotCodexFolder"):
             folder = Path(name["dotCodexFolder"])
             paths.update((folder / "config.toml", folder / "hooks.json"))
-    snapshot = {str(p): fingerprint(p) for p in sorted(paths)}
+    return {str(p): fingerprint(p) for p in sorted(paths)}
+
+
+def environment(repo, identity, home):
+    identity = thread_id(identity)
+    if os.environ.get("CODEX_THREAD_ID") != identity:
+        raise RelayError("Protected start requires this execution's exact CODEX_THREAD_ID.")
+    repo, home = Path(repo).resolve(), Path(home).resolve()
+    reader = Rollout(locate(home, identity)).bind(repo, identity)
+    pid, executable = desktop_host()
+    overrides = host_overrides(pid, executable)
+    config, listing, requirements = read_capabilities(repo, home, executable, overrides)
+    limit, verified = validate_capabilities(repo, config, listing, requirements)
+    snapshot = capability_files(repo, home, config)
     return reader, {"host_pid": pid, "compact_limit": limit,
                     "capabilities": {"files": snapshot, "hooks": verified,
                                      "hook_path": str(hooks_path(repo)),
+                                     "hooks_fingerprint": hook_fingerprint(repo),
+                                     "resolver": {"home": str(home), "executable": executable},
                                      "basis": "trusted definitions + native turn delivery + PreCompact contract"}}
 
 
@@ -189,21 +224,58 @@ def check_delivery(repo, reader):
     if (marker.get("rollout") != str(reader.path) or not marker.get("guard_requested")
             or probe.get("turn_id") != reader.turn or not probe.get("emitted")
             or not probe.get("acknowledged")
-            or probe.get("hooks_fingerprint") != fingerprint(hooks_path(repo))):
+            or probe.get("hooks_fingerprint") != hook_fingerprint(repo)):
         raise RelayError("Native delivery is not acknowledged for this turn and hook configuration. Run start, receive the native token, acknowledge it, then retry start.")
+
+
+def recheck_configuration(value, observed):
+    capabilities = value["capabilities"]
+    resolver = capabilities.get("resolver")
+    if not resolver:
+        # Older activations lack the reader binding; never infer one from cwd.
+        changed = next(path for path, digest in observed.items()
+                       if digest != capabilities["files"][path])
+        raise RelayError(f"Protection input changed: {changed}; recheck activation.")
+    repo, home = Path(value["repo"]), Path(resolver["home"])
+    executable = resolver["executable"]
+    for _ in range(3):
+        try:
+            overrides = host_overrides(value["host_pid"], executable)
+            config, listing, requirements = read_capabilities(repo, home, executable, overrides)
+        except subprocess.SubprocessError as exc:
+            raise RelayError("Cannot recheck this project's protection configuration.") from exc
+        current = capability_files(repo, home, config)
+        # Re-read if files changed during the query or a newly resolved layer was
+        # not observed beforehand. Never bless a digest that the reader missed.
+        if (any(path not in observed or observed[path] != digest
+                for path, digest in current.items())
+                or any(fingerprint(path) != digest for path, digest in observed.items())):
+            observed = {path: fingerprint(path) for path in observed.keys() | current.keys()}
+            continue
+        if hook_fingerprint(repo) != capabilities["hooks_fingerprint"]:
+            raise RelayError("Native Relay hook configuration changed; recheck activation and delivery.")
+        limit, verified = validate_capabilities(repo, config, listing, requirements)
+        if limit != value["compact_limit"]:
+            raise RelayError("Protection compaction ceiling changed for this project; recheck activation.")
+        if verified != capabilities["hooks"]:
+            raise RelayError("Relay hook definitions changed for this project; recheck activation.")
+        capabilities["files"] = current
+        return
+    raise RelayError("Protection inputs kept changing during the scoped capability recheck; retry activation.")
 
 
 def check_runtime(runtime, value):
     capabilities = value.get("capabilities", {})
     if not capabilities.get("files"):
         raise RelayError("Protected activation has no capability snapshot.")
-    for path, digest in capabilities["files"].items():
-        if fingerprint(path) != digest:
-            raise RelayError(f"Protection input changed: {path}; recheck activation.")
     marker = read_json(marker_path(runtime, value["thread_id"]), {})
     probe = marker.get("delivery_probe", {})
     if (not marker.get("guard_requested") or marker.get("rollout") != value["rollout"]
             or probe.get("turn_id") != value["turn_id"] or not probe.get("acknowledged")
             or not probe.get("emitted")
-            or probe.get("hooks_fingerprint") != capabilities["files"].get(capabilities["hook_path"])):
+            or probe.get("hooks_fingerprint") != capabilities.get(
+                "hooks_fingerprint", capabilities["files"].get(capabilities["hook_path"]))):
         raise RelayError("Scoped guard or native delivery evidence changed; protection unavailable.")
+    observed = {path: fingerprint(path) for path in capabilities["files"]}
+    if observed != capabilities["files"]:
+        recheck_configuration(value, observed)
