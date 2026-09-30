@@ -9,7 +9,7 @@ from .state import RelayError, runtime_dir
 
 def parser():
     p = argparse.ArgumentParser(
-        prog="relay", description="Research notes on a relay-notes branch; hooks that ban compaction, "
+        prog="relay", description="Research notes on a <user>/relay-notes branch; hooks that ban compaction, "
         "force fresh-context subagents and ask for a handoff before the context wall.")
     p.add_argument("--version", action="version", version=__version__)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -37,6 +37,9 @@ def parser():
     q.add_argument("--path", action="append", default=[],
                    help="reviewed file to commit, or one links query file (default RESEARCH.md)")
     q.add_argument("-m", "--message", default="")
+    q.add_argument("--from", dest="source", metavar="REF",
+                   help="init: continue this existing notes branch (e.g. origin/relay-notes) under your own name")
+    q.add_argument("--fresh", action="store_true", help="init: start empty although notes branches exist")
     return p
 
 
@@ -50,7 +53,7 @@ def status(repo):
 
 def notes_command(args):
     if args.action == "init":
-        return notes.init(args.repo)
+        return notes.init(args.repo, args.source, args.fresh)
     if args.action == "status":
         return notes.inspect(args.repo)
     if args.action == "links":

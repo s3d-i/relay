@@ -16,11 +16,39 @@ class NotesTests(RepoCase):
         path = Path(result["notes"])
         self.assertEqual(git(self.repo, "status", "--porcelain"), initial)
         self.assertEqual(git(self.repo, "branch", "--show-current"), "main")
-        self.assertEqual(git(path, "branch", "--show-current"), "relay-notes")
+        self.assertEqual(git(path, "branch", "--show-current"), "Relay-Test/relay-notes")
         self.assertFalse((path / "code.txt").exists())
         (path / "RESEARCH.md").write_text("Existing understanding")
         self.assertFalse(notes.init(self.repo)["entry_created"])
         self.assertEqual((path / "RESEARCH.md").read_text(), "Existing understanding")
+
+    def test_existing_notes_branches_need_a_human_decision(self):
+        tree = git(self.repo, "mktree", input="")
+        theirs = git(self.repo, "commit-tree", tree, "-m", "Earlier notes")
+        git(self.repo, "update-ref", "refs/remotes/origin/relay-notes", theirs)
+        self.assertEqual([c["ref"] for c in notes.inspect(self.repo)["candidates"]], ["origin/relay-notes"])
+        with self.assertRaisesRegex(RelayError, "origin/relay-notes.*--from.*--fresh"):
+            notes.init(self.repo)
+        self.assertIsNone(notes.find(self.repo))
+        with self.assertRaisesRegex(RelayError, "not both"):
+            notes.init(self.repo, "origin/relay-notes", True)
+        result = notes.init(self.repo, "origin/relay-notes")
+        self.assertEqual(result["branch"], "Relay-Test/relay-notes")
+        self.assertEqual(git(result["notes"], "rev-parse", "HEAD"), theirs)
+        self.assertEqual(notes.init(self.repo)["notes"], result["notes"])  # no second decision once set up
+
+    def test_fresh_ignores_candidates_and_legacy_worktree_is_found(self):
+        tree = git(self.repo, "mktree", input="")
+        theirs = git(self.repo, "commit-tree", tree, "-m", "Earlier notes")
+        git(self.repo, "update-ref", "refs/heads/relay-notes", theirs)
+        result = notes.init(self.repo, fresh=True)
+        self.assertNotEqual(git(result["notes"], "rev-parse", "HEAD"), theirs)
+        git(self.repo, "worktree", "remove", "--force", result["notes"])
+        git(self.repo, "branch", "-D", "Relay-Test/relay-notes")
+        legacy = self.repo.parent / "legacy-notes"
+        git(self.repo, "worktree", "add", str(legacy), "relay-notes")
+        self.assertEqual(notes.find(self.repo), legacy)
+        self.assertEqual(notes.inspect(self.repo)["branch"], "relay-notes")
 
     def test_commit_only_explicit_reviewed_files(self):
         path = Path(notes.init(self.repo)["notes"])

@@ -1,15 +1,35 @@
-# Current research
+# Research entry point
 
-> A starting point for the first account, with no research conclusions yet. Replace the prompts with aligned intent; adapt the headings and never overwrite an existing entry point. This is the entry point for the current focus. Its connections can unfold further and link laterally.
+> A starting skeleton with no research content yet. Keep the five sections; replace the prompts. Never overwrite an existing entry point with this file. One-line claims, statuses and links live here; grounds live in the materials. Section rules and the review policy: the research material convention, "Entry point".
 
-## What we are asking, and why
+## Vision
 
-Explain the goal, constraints, priorities, and how we arrived here in connected prose. Distinguish human decisions from agent interpretations. Where needed, cite anchors in private local sources and identify their origin without copying original wording. When a source is missing, explain which parts of the understanding cannot be checked.
+What should exist because of this work, in the human's terms, and the standing constraints. Written or approved by the human.
 
-## Current understanding and grounds for doubt
+_Review: agent draft, not yet reviewed._
 
-Describe key observations, the strength and scope of judgments, and links to evidence, counterexamples, and alternative explanations beside the claims they concern. Explain why these connections matter. The entry point need not list every material; new materials may revise its understanding or its question.
+## Position
 
-## Where work stands
+| Capability the vision asks for | Implemented and verified today | Evidence | Grounds |
+| --- | --- | --- | --- |
+| One line per capability | What exists, or "nothing verified" | Mechanical check, measurement, agent inspection, human judgment | Link |
 
-State unresolved questions, why routes were deferred, and what work is still running. Identify the next location worth checking and why it could change a judgment. Suggestions remain open to reassessment by a fresh agent. Follow question materials onward to code, results, or human feedback as needed.
+_Review: agent draft, not yet reviewed._
+
+## Problem map
+
+| Node | Problem | Needs | Status | Best current understanding |
+| --- | --- | --- | --- | --- |
+| <a id="node-id"></a>`node-id` | One abstract sentence, independent of the implementation | Other node ids, acyclic | open, held or parked | Link to an anchor |
+
+_Review: agent draft, not yet reviewed._
+
+## Current movement
+
+Which nodes are in focus, the question asked of each, why now, what result would redirect the work, and what is still running.
+
+_Review: agent draft, not yet reviewed._
+
+## Views
+
+- One line per view file: the axis it reads along and a link.

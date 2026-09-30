@@ -13,7 +13,8 @@ It does five things:
    agent to close out: write notes, stop workers, end the turn. It does not compact.
 4. **Fresh-context subagents, enforced.** A PreToolUse hook denies spawning a subagent that
    inherits the parent conversation.
-5. **A `relay-notes` branch.** A separate worktree and branch hold `RESEARCH.md` (the entry
+5. **A `<user>/relay-notes` branch.** A separate worktree and a branch named after the Git
+   user hold `RESEARCH.md` (the entry
    point), linked materials, and Git-ignored private human inputs. A fresh session reads it
    and continues.
 
@@ -87,13 +88,17 @@ it reads the notes, aligns with you, checks `relay status`, and delegates.
 ## Notes workflow
 
 ```sh
-relay notes init   --repo /path/to/project
+relay notes init   --repo /path/to/project                 # [--from <ref> | --fresh]
 relay notes status --repo /path/to/project
 relay notes links  --repo /path/to/project --path RESEARCH.md
 relay notes commit --repo /path/to/project --path RESEARCH.md --path artifacts/x.md -m "..."
 ```
 
-`init` creates the `relay-notes` branch from an empty tree, adds a worktree at
+`init` creates the branch `<user>/relay-notes`, where `<user>` is `git config user.name` made
+ref-safe (bare `relay-notes` when no name is set). If other notes branches exist, local or
+remote-tracking, named `relay-notes` or `*/relay-notes`, it stops and lists them: you decide
+between `--from <ref>`, which starts your branch at that commit, and `--fresh`, which starts
+from an empty tree. With no candidates it starts empty. It then adds a worktree at
 `<git-common-dir>/research-relay/notes`, appends `/artifacts/private/` to `info/exclude`, and
 writes a template `RESEARCH.md` only if none exists. `status` shows the worktree, uncommitted
 changes, `private_inputs_ignored` and `tracked_private_artifacts`. `links` lists one file's
@@ -118,6 +123,6 @@ and which grounds deserve another look. Conventions: [convention.md](skills/rese
   Subagent context is not monitored on either agent.
 - Codex: the `Agent` tool_input fields (`fork_turns`) are observed, not documented.
 - A hook that is not loaded or not trusted is silent. `relay status` checks the file, not the app.
-- Notes are committed to `relay-notes`, never pushed. Private inputs are not in Git; back them up yourself.
+- Notes are committed to your notes branch, never pushed. Private inputs are not in Git; back them up yourself.
 
 Development: `python3 -m unittest discover -s tests` and `python3 scripts/check_skill.py`.

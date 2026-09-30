@@ -11,10 +11,10 @@ Commands below run as `python3 <skill>/scripts/relay.py ...`, where `<skill>` is
 
 ## 1. Resume
 
-1. `relay notes status --repo <repo>`. This locates the `relay-notes` worktree without switching the code checkout. Uncommitted or staged notes may be drafts from a failed closeout: keep them. If an entry point exists elsewhere, read it and align on migration instead of creating a competing account.
-2. Read `RESEARCH.md`. Follow links to evidence, counterexamples and human feedback as the current question requires. `relay notes links --repo <repo> --path <file>` lists one file's outgoing links and backlinks. Check actual code and experiment state. Do not replay old transcripts or execute an old TODO mechanically. Say how missing sources limit a judgment.
+1. `relay notes status --repo <repo>`. This locates the notes worktree (branch `<git user>/relay-notes`) without switching the code checkout. With no worktree it lists `candidates`: existing notes branches, local or remote. Uncommitted or staged notes may be drafts from a failed closeout: keep them. If an entry point exists elsewhere, read it and align on migration instead of creating a competing account.
+2. Read `RESEARCH.md`: vision, position, problem map, current movement, views. Note which sections carry unreviewed proposals. Follow links to evidence, counterexamples and human feedback as the current question requires. `relay notes links --repo <repo> --path <file>` lists one file's outgoing links and backlinks. Check actual code and experiment state. Do not replay old transcripts or execute an old TODO mechanically. Say how missing sources limit a judgment.
 3. State your understanding briefly: intent and constraints, what the evidence supports, routes set aside and why, uncertainties, a proposed next step. Ask only questions that would change the next action. Apply direction already given in the current message. A previous agent's suggestion stays a suggestion.
-4. No notes yet: agree intent and direction first, then `relay notes init --repo <repo>` and write the entry point per the [material convention](references/convention.md). Never overwrite an existing entry point with the template. Templates in `assets/` are prompts, not a required structure.
+4. No notes worktree yet: if `candidates` is not empty, ask the human whether to continue one (`relay notes init --repo <repo> --from <ref>`) or start empty (`--fresh`); `init` refuses to choose for them. With no candidates, agree intent and direction first, then `relay notes init --repo <repo>` and write the entry point per the [material convention](references/convention.md). Never overwrite an existing entry point with the template. The entry point keeps the template's five sections; the material template is a prompt, not a required structure.
 5. `relay status --repo <repo>`. Exit 0: the policy is active. Exit 2: it is off; tell the human, stay with reading and alignment, and do not start sustained research. Never raise thresholds, edit hook trust, or change global settings yourself.
 
 ## 2. Delegate
@@ -36,7 +36,7 @@ When feedback arrives mid-task: check the worker's actual state, acknowledge how
 
 ## 4. Maintain notes
 
-Follow the [convention](references/convention.md). Record consequential observations, counterexamples, failure diagnoses and changes of direction as they happen, near the judgment they affect, with links. Revise explanations without rewriting original results; keep enough of changing code and outputs to revisit a judgment. When new material changes the question, update the entry point and keep the reason for the revision. Repository-wide link repair is not a prerequisite.
+Follow the [convention](references/convention.md). Record consequential observations, counterexamples, failure diagnoses and changes of direction as they happen, near the judgment they affect, with links. Revise explanations without rewriting original results; keep enough of changing code and outputs to revisit a judgment. When new material changes a position line, a map node or the movement, update that section within the [review rules](references/convention.md#review) and keep the reason for the revision in a material. Anchor claims others will cite. A change that needs human review goes in as a marked proposal. Repository-wide link repair is not a prerequisite.
 
 ## 5. Close out
 
@@ -44,6 +44,6 @@ Trigger: the `research-relay: context usage crossed the closeout threshold` remi
 
 1. Subagents: collect completed or partial results, stop the rest, verify they stopped writing. Report what you cannot confirm; never obstruct a human stop.
 2. Independent training: for work allowed to continue, record identity, location, outputs and health checks. Do not kill processes indiscriminately.
-3. `RESEARCH.md`: update current focus, understanding, affected connections, decision summaries, private citations, and where unfinished work and results live. State evidence strength; do not embellish. No run manifests or research version numbers.
+3. `RESEARCH.md`: update position, map statuses and links, current movement, review lines and private citations, and where unfinished work and results live. State evidence strength; do not embellish. No run manifests or research version numbers.
 4. `relay notes status --repo <repo>`. Review each diff for originals, secrets, large data and unrelated changes; confirm private files were saved. Then `relay notes commit --repo <repo> --path RESEARCH.md --path artifacts/<file>.md -m "<question and change>"`. Check the returned commit and `remaining`. No push, no reset. On failure keep drafts and the index and report their paths; do not claim a completed handoff.
-5. Report saved materials, commits or drafts, training still running, and open questions. End the turn. Do not compact, and do not start or continue a session yourself; the human opens the next fresh one.
+5. Report saved materials, commits or drafts, training still running, proposals awaiting human review, and open questions. End the turn. Do not compact, and do not start or continue a session yourself; the human opens the next fresh one.
