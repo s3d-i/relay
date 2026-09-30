@@ -1,58 +1,14 @@
-"""Per-repository policy file, per-session state, and the texts hooks deliver."""
+"""Per-repository policy file and per-session state."""
 
 from datetime import datetime, timezone
 from pathlib import Path
 import re
 
+from . import context
 from .state import RelayError, read_json, runtime_dir, write_json
 
 
-DEFAULT_WINDOW = 200_000
-DEFAULT_WARN_FRACTION = 0.6
-
-PRECOMPACT = (
-    "research-relay forbids compaction in this repository. Close out instead: update RESEARCH.md "
-    "on relay-notes, stop workers, end the turn. The human opens a fresh session that reads the notes."
-)
-
-CLOSEOUT = (
-    "research-relay: context usage crossed the closeout threshold. Begin closeout now. "
-    "Do not open new directions or delegate new research; finish the current operation at a safe boundary. "
-    "Collect completed or partial subagent results, stop the agents and verify they stopped writing. "
-    "Keep original human inputs only in Git-ignored artifacts/private/human-inputs/<session-id>.md. "
-    "Update RESEARCH.md on relay-notes: current understanding, affected connections, decision summaries, "
-    "private source citations, and where unfinished investigation stands. Commit only reviewed shareable "
-    "notes (relay notes commit --path ...), never private originals. Report briefly and end this turn. "
-    "Do not compact; the human opens the next fresh session."
-)
-
-FEEDBACK = (
-    "research-relay human feedback: Distinguish unsolicited human input from answers to agent questions "
-    "and option selections; option wording is the agent's, and UserPromptSubmit alone does not establish "
-    "provenance. Preserve originals only in Git-ignored artifacts/private/human-inputs/<session-id>.md, "
-    "one file per main session, with separately labelled agent context annotations (question, proposal, "
-    "code state, results). Interpret a selection within the question and options presented; never expand "
-    "authorization through a summary. Shareable notes hold decisions, interpretations and private "
-    "citations, not copies. Apply explicit stops immediately; a new idea does not by itself interrupt "
-    "active work. Briefly state your understanding and what you will do."
-)
-
-SESSION_START = (
-    "research-relay is active for this repository: compaction is blocked by hook, and when context usage "
-    "crosses the threshold you will be told to close out. Entry point: RESEARCH.md on the relay-notes "
-    "branch (relay notes status). Read the research-relay skill ($research-relay) and follow it. "
-    "Delegation: the main thread aligns with the human, delegates bounded work to fresh-context "
-    "subagents (never ones that inherit this conversation), reviews returned evidence and maintains the "
-    "notes; it does not carry out substantive research itself."
-)
-
-COMPACTED = (
-    "research-relay: this session continued after a compaction that should have been blocked. "
-    "Do not continue sustained research on compacted context. Recover understanding from RESEARCH.md on "
-    "relay-notes, report the compaction to the human, and close out; the human opens a fresh session."
-)
-
-FRESH_CONTEXT_DENIED = "research-relay: every subagent must start with fresh context. {fix}"
+MODES = ("trajectory", "autoresearch")
 
 
 def locate(cwd):
@@ -67,14 +23,36 @@ def load(runtime):
     return read_json(Path(runtime) / "policy.json")
 
 
-def enable(runtime, agent=None, window=None, warn_fraction=None, compact_limit=None):
-    fraction = DEFAULT_WARN_FRACTION if warn_fraction is None else warn_fraction
+def mode(policy):
+    # A file written before modes existed meant what autoresearch means now.
+    value = policy.get("mode", "autoresearch")
+    if value not in MODES:
+        raise RelayError(f"Unknown mode in policy.json: {value!r}")
+    return value
+
+
+def enable(runtime, mode="trajectory", agent=None, window=None, warn_fraction=None, reserve=None,
+           compact_limit=None, checkpoint_fraction=None):
+    if mode not in MODES:
+        raise RelayError(f"--mode must be one of {', '.join(MODES)}.")
+    fraction = context.WARN_FRACTION if warn_fraction is None else warn_fraction
     if not 0.1 <= fraction <= 0.95:
         raise RelayError("--warn-fraction must be between 0.1 and 0.95.")
-    if any(n is not None and n <= 0 for n in (window, compact_limit)):
-        raise RelayError("--window and --compact-limit must be positive.")
-    value = {"active": True, "agent": agent, "context_window": window, "warn_fraction": fraction,
-             "compact_limit": compact_limit, "since": now()}
+    step = context.CHECKPOINT_FRACTION if checkpoint_fraction is None else checkpoint_fraction
+    if not 0 <= step < 1:
+        raise RelayError("--checkpoint-fraction must be at least 0 and below 1.")
+    reserve = context.RESERVE if reserve is None else reserve
+    if reserve < 0 or any(n is not None and n <= 0 for n in (window, compact_limit)):
+        raise RelayError("--window and --compact-limit must be positive, --reserve not negative.")
+    if mode == "autoresearch" and (agent is None or agent == "claude" and not window):
+        # A mode that blocks compaction must be able to deliver its closeout reminder.
+        raise RelayError("--mode autoresearch needs --agent, and --window with --agent claude: "
+                         "Claude Code does not report its context window.")
+    value = {"version": 2, "active": True, "mode": mode, "agent": agent, "context_window": window,
+             "compact_limit": compact_limit, "warn_fraction": fraction, "reserve": reserve,
+             "checkpoint_fraction": step, "since": now()}
+    if window and context.thresholds(value) is None:
+        raise RelayError("Nothing is left below the window after --reserve; lower --reserve.")
     write_json(Path(runtime) / "policy.json", value)
     return value
 
@@ -82,17 +60,6 @@ def enable(runtime, agent=None, window=None, warn_fraction=None, compact_limit=N
 def disable(runtime):
     value = {**(load(runtime) or {}), "active": False, "until": now()}
     write_json(Path(runtime) / "policy.json", value)
-    return value
-
-
-def threshold(policy, window=None):
-    """An explicit policy window wins; else the transcript's; else the default."""
-    window = policy.get("context_window") or window or DEFAULT_WINDOW
-    value = int(window * policy.get("warn_fraction", DEFAULT_WARN_FRACTION))
-    limit = policy.get("compact_limit")
-    if limit:
-        # Stay a fifth below the compaction ceiling: closeout needs room to write notes.
-        value = min(value, int(min(window, limit) * 0.8))
     return value
 
 

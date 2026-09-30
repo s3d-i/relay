@@ -59,9 +59,16 @@ def install(repo, agent, uninstall=False):
         target.symlink_to(SKILL, target_is_directory=True)
     result = backend.install_hooks(repo, backend.hook_command(LAUNCHER))
     tracked = git(repo, "ls-files", "-z", "--", *(rule.strip("/") for rule in rules))
+    notes = backend.warnings(repo, None)
+    if tracked:
+        notes.append("relay-local files are tracked; .gitignore does not untrack them")
     return {"agent": agent, "skill": str(target), "installed": True, "gitignore_changed": gitignore_changed,
-            **result, **({"warning": "relay-local files are tracked; .gitignore does not untrack them"}
-                         if tracked else {})}
+            **result, **({"warnings": notes} if notes else {})}
+
+
+def warnings(repo, policy=None):
+    repo = toplevel(repo)
+    return [text for name in backends.NAMES for text in backends.get(name).warnings(repo, policy)]
 
 
 def hooks_status(repo):

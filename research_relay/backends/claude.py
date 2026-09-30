@@ -3,13 +3,14 @@
 from pathlib import Path
 
 from . import HOOK_EVENTS, hook_map, installed, last_value, merge_hooks
-from ..policy import DEFAULT_WINDOW, FRESH_CONTEXT_DENIED
+from ..autoresearch import FRESH_CONTEXT_DENIED
 from ..state import RelayError, read_json, write_json
 
 
 NAME = "claude"
 SKILL_DIR = ".claude/skills"
 HOOKS_FILE = ".claude/settings.local.json"
+REPORTS_WINDOW = False  # neither the transcript nor hook payloads carry it; the policy supplies it
 USAGE_KEYS = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "output_tokens")
 
 
@@ -23,19 +24,16 @@ def hook_command(launcher):
 
 
 def render_hooks(command):
-    # autoCompactEnabled is belt and braces next to the PreCompact block.
-    return {"hooks": hook_map(command), "autoCompactEnabled": False}
+    return {"hooks": hook_map(command)}
 
 
 def install_hooks(repo, command):
     path = hooks_file(repo)
     current = read_json(path, {})  # foreign keys in settings.local.json survive untouched
     changed = merge_hooks(current.setdefault("hooks", {}), hook_map(command))
-    if current.get("autoCompactEnabled") is not False:
-        current["autoCompactEnabled"], changed = False, True
     if changed:
         write_json(path, current)
-    return {"hooks_file": str(path), "hooks_changed": changed, "autoCompactEnabled": False}
+    return {"hooks_file": str(path), "hooks_changed": changed}
 
 
 def hooks_installed(repo, command):
@@ -43,7 +41,19 @@ def hooks_installed(repo, command):
         current = read_json(hooks_file(repo), {})
     except RelayError:
         return False
-    return installed(current.get("hooks"), hook_map(command)) and current.get("autoCompactEnabled") is False
+    return installed(current.get("hooks"), hook_map(command))
+
+
+def warnings(repo, policy):
+    # Older relay versions wrote this key. relay cannot tell its own false from the human's, so it only reports.
+    try:
+        current = read_json(hooks_file(repo), {})
+    except RelayError:
+        return []
+    if current.get("autoCompactEnabled") is False:
+        return [f"{HOOKS_FILE} sets autoCompactEnabled: false; remove it to let Claude Code compact "
+                "in trajectory mode."]
+    return []
 
 
 def block_compaction(reason):
@@ -56,10 +66,9 @@ def read_usage(transcript_path):
 
 
 def _usage(item):
-    if item["type"] != "assistant":
+    if item["type"] != "assistant" or item.get("isSidechain"):
         return None
     usage = item["message"]["usage"]
-    # The context window is not in the transcript; the policy supplies it.
     return {"used": sum(int(usage.get(key) or 0) for key in USAGE_KEYS),
             "window": None, "observed_at": item.get("timestamp")}
 

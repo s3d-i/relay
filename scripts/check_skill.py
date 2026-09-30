@@ -11,7 +11,7 @@ text = (skill / "SKILL.md").read_text()
 assert text.startswith("---\nname: research-relay\ndescription: "), "SKILL.md frontmatter"
 assert len(text.split("---", 2)) == 3, "SKILL.md frontmatter is not closed"
 assert (skill / "scripts/relay.py").is_file(), "launcher missing"
-for name in ("convention.md", "codex.md", "claude-code.md"):
+for name in ("convention.md", "autoresearch.md", "codex.md", "claude-code.md"):
     assert (skill / "references" / name).is_file(), f"references/{name} missing"
 # Only this skill's shipped resources are checked; research notes have no imposed shape.
 broken = []

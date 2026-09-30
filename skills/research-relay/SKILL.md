@@ -1,30 +1,25 @@
 ---
 name: research-relay
-description: Resume a research thread from RESEARCH.md on the relay-notes branch, align with the human, delegate bounded work to fresh-context subagents one at a time, keep notes and human-input provenance, and close out when the context reminder arrives. Use in a fresh session the human opened by hand; never continue a session automatically, never through compaction.
+description: Keep a research trajectory durable across agent sessions. Resume from RESEARCH.md on the relay-notes branch, align with the human, keep notes and human-input provenance current, and answer relay's context reminders. In auto-research mode, also delegate bounded work to fresh-context subagents and close out at the final reminder instead of compacting.
 ---
 
 # research-relay
 
-You are the main thread of a relay-protected research session. Hold the human's intent, delegate the work, judge the evidence, and keep the notes so a fresh agent can continue without this transcript. A hook blocks compaction; when context runs low, a reminder tells you to close out. Sessions are temporary; the materials carry continuity.
+You keep this repository's research trajectory: the notes a fresh agent uses to continue without this transcript. Hold the human's intent, judge the evidence, and keep the notes current. Sessions are temporary; the materials carry continuity. Hooks prompt you at session start, as context grows, and after a compaction.
+
+relay has two modes, shown as `mode` by `relay status`. In `trajectory` mode the hooks only remind; nothing is blocked. `autoresearch` mode adds a session discipline on top: compaction is blocked, subagents must start with fresh context, and the final context reminder is a closeout. When the mode is `autoresearch`, also follow [auto-research](references/autoresearch.md).
 
 Commands below run as `python3 <skill>/scripts/relay.py ...`, where `<skill>` is this directory. Agent-specific details: [Claude Code](references/claude-code.md), [Codex](references/codex.md).
 
 ## 1. Resume
 
-1. `relay notes status --repo <repo>`. This locates the notes worktree (branch `<git user>/relay-notes`) without switching the code checkout. With no worktree it lists `candidates`: existing notes branches, local or remote. Uncommitted or staged notes may be drafts from a failed closeout: keep them. If an entry point exists elsewhere, read it and align on migration instead of creating a competing account.
+1. `relay notes status --repo <repo>`. This locates the notes worktree (branch `<git user>/relay-notes`) without switching the code checkout. With no worktree it lists `candidates`: existing notes branches, local or remote. Uncommitted or staged notes may be drafts from an interrupted session: keep them. If an entry point exists elsewhere, read it and align on migration instead of creating a competing account.
 2. Read `RESEARCH.md`: vision, position, problem map, current movement, views. Note which sections carry unreviewed proposals. Follow links to evidence, counterexamples and human feedback as the current question requires. `relay notes links --repo <repo> --path <file>` lists one file's outgoing links and backlinks. Check actual code and experiment state. Do not replay old transcripts or execute an old TODO mechanically. Say how missing sources limit a judgment.
 3. State your understanding briefly: intent and constraints, what the evidence supports, routes set aside and why, uncertainties, a proposed next step. Ask only questions that would change the next action. Apply direction already given in the current message. A previous agent's suggestion stays a suggestion.
 4. No notes worktree yet: if `candidates` is not empty, ask the human whether to continue one (`relay notes init --repo <repo> --from <ref>`) or start empty (`--fresh`); `init` refuses to choose for them. With no candidates, agree intent and direction first, then `relay notes init --repo <repo>` and write the entry point per the [material convention](references/convention.md). Never overwrite an existing entry point with the template. The entry point keeps the template's five sections; the material template is a prompt, not a required structure.
-5. `relay status --repo <repo>`. Exit 0: the policy is active. Exit 2: it is off; tell the human, stay with reading and alignment, and do not start sustained research. Never raise thresholds, edit hook trust, or change global settings yourself.
+5. `relay status --repo <repo>` and read `mode` and `warnings`. `trajectory`: work as the human directs and keep the notes as below. `autoresearch`: also follow [auto-research](references/autoresearch.md). Exit 2: relay is off; the notes commands still work, but no reminders will arrive, so tell the human. Pass warnings on to the human. Never change the mode or thresholds, edit hook trust, or change global settings yourself.
 
-## 2. Delegate
-
-- Subagents do the substantive work: investigation, experiments, code changes, verification. One at a time by default. While one runs, wait for it; handle human feedback and closeout; do not start another investigation or do the worker's job in this thread. Bounded review of returned evidence and code stays with you.
-- Every subagent starts with fresh context. The hook denies a spawn that inherits the conversation; do not work around it. New agent per independent task; do not reuse a worker carrying another task's history. Feedback for a running task is delivered explicitly.
-- Write a self-contained handoff: the question and why it matters; relevant facts, decisions and uncertainty; concrete repository and evidence paths; allowed changes and constraints; a verifiable deliverable; a stopping boundary with instructions to report failures and unfinished work. No "as discussed". Ask the worker to keep useful observations and failed paths and to report output locations and code or experiment identities.
-- Weigh evidence strength before integrating results. A finished subagent does not end the turn; continue while direction is clear. Pause for a decision only the human can make, a stop request, or the closeout reminder.
-
-## 3. Human feedback
+## 2. Human feedback
 
 Distinguish unsolicited prompts and steering from answers to your questions and selections among your options. Only the former are original human prompts. For answers, keep the question, the options as presented, and the actual selection; your option wording does not become human-authored text. `role=user` or a hook event name does not establish provenance; mark unknown origins unverified.
 
@@ -32,18 +27,22 @@ Originals are private whether or not they hold secrets. Keep one `artifacts/priv
 
 Shareable notes (`RESEARCH.md`, question materials, commit messages) carry decisions, your interpretation, and a "private, local" citation. Never paste originals; never commit or force-add `artifacts/private/`. Another clone will lack the originals: say so rather than recovering them from transcripts.
 
-When feedback arrives mid-task: check the worker's actual state, acknowledge how you read the input and what you will do, save the original and your interpretation, then pass necessary changes to the worker. Distinguish an untested idea, a change of direction, and a stop instruction. Stops apply immediately; ideas do not automatically interrupt a worker. If your turn was interrupted, verify the worker's state instead of assuming it stopped.
+When feedback arrives mid-task: acknowledge how you read the input and what you will do, then save the original and your interpretation. Distinguish an untested idea, a change of direction, and a stop instruction. Stops apply immediately; ideas do not automatically interrupt work in progress.
 
-## 4. Maintain notes
+## 3. Maintain notes
 
 Follow the [convention](references/convention.md). Record consequential observations, counterexamples, failure diagnoses and changes of direction as they happen, near the judgment they affect, with links. Revise explanations without rewriting original results; keep enough of changing code and outputs to revisit a judgment. When new material changes a position line, a map node or the movement, update that section within the [review rules](references/convention.md#review) and keep the reason for the revision in a material. Anchor claims others will cite. A change that needs human review goes in as a marked proposal. Repository-wide link repair is not a prerequisite.
 
-## 5. Close out
+One main session at a time rewrites `RESEARCH.md`. If another session or another machine is working in the same notes, leave your findings as separate materials and say so, instead of editing the entry point concurrently.
 
-Trigger: the `research-relay: context usage crossed the closeout threshold` reminder, a human stop, or a relay failure message. Stop opening directions. Finish the current operation at a safe boundary. Closeout checks an ongoing record; do not reconstruct the whole investigation or refuse to end because research is unfinished.
+To save: `relay notes status --repo <repo>`, review each diff for originals, secrets, large data and unrelated changes, and confirm private files were saved. Then `relay notes commit --repo <repo> --path RESEARCH.md --path artifacts/<file>.md -m "<question and change>"`, where the workspace's rules let this agent commit. Check the returned commit and `remaining`. No push, no reset. On failure keep drafts and the index and report their paths.
 
-1. Subagents: collect completed or partial results, stop the rest, verify they stopped writing. Report what you cannot confirm; never obstruct a human stop.
-2. Independent training: for work allowed to continue, record identity, location, outputs and health checks. Do not kill processes indiscriminately.
-3. `RESEARCH.md`: update position, map statuses and links, current movement, review lines and private citations, and where unfinished work and results live. State evidence strength; do not embellish. No run manifests or research version numbers.
-4. `relay notes status --repo <repo>`. Review each diff for originals, secrets, large data and unrelated changes; confirm private files were saved. Then `relay notes commit --repo <repo> --path RESEARCH.md --path artifacts/<file>.md -m "<question and change>"`. Check the returned commit and `remaining`. No push, no reset. On failure keep drafts and the index and report their paths; do not claim a completed handoff.
-5. Report saved materials, commits or drafts, training still running, proposals awaiting human review, and open questions. End the turn. Do not compact, and do not start or continue a session yourself; the human opens the next fresh one.
+## 4. Context reminders
+
+relay watches context usage and injects a reminder after a tool call. A reminder means "check", not "the notes are stale"; the absence of one does not mean they are current.
+
+- **Checkpoint** ("context has grown by about N tokens"): check whether this session holds consequential observations, results, decisions or changes of direction that the notes do not. Record what is missing in the relevant materials and update only the affected entry-point lines. If nothing is missing, continue. Do not write a session summary or make an empty commit.
+- **Final reminder** ("past the final reminder threshold"): preserve what is not yet durable, including links to existing evidence and where unfinished work stands; update position, map statuses, current movement and review lines within the review rules; save as in section 3. Check the ongoing record instead of reconstructing the whole investigation. In trajectory mode, continue afterwards; the host may compact later. In auto-research mode this reminder is the [closeout](references/autoresearch.md#close-out).
+- **After a compaction** ("continued after a compaction"): treat the compaction summary as unverified navigation, not as evidence or human authorization. Recover the current question from `RESEARCH.md` and the materials, code and logs it needs, and name the gaps that limit the next judgment.
+- **Mode change** ("this repository is now in ... mode"): the human changed the policy during the session. Follow the mode named there from now on.
+- **No monitoring** ("cannot monitor context usage"): no reminders will arrive in this session. Tell the human, and check the notes on your own at natural boundaries.

@@ -9,8 +9,9 @@ from .state import RelayError, runtime_dir
 
 def parser():
     p = argparse.ArgumentParser(
-        prog="relay", description="Research notes on a <user>/relay-notes branch; hooks that ban compaction, "
-        "force fresh-context subagents and ask for a handoff before the context wall.")
+        prog="relay", description="Research notes on a <user>/relay-notes branch; hooks that remind the agent "
+        "to keep them current as context grows. Optional auto-research mode: no compaction, fresh-context "
+        "subagents, closeout before the context wall.")
     p.add_argument("--version", action="version", version=__version__)
     sub = p.add_subparsers(dest="cmd", required=True)
     agent = dict(choices=backends.NAMES, metavar="{codex,claude}")
@@ -21,10 +22,16 @@ def parser():
     q.add_argument("--print", action="store_true", help="print the hooks JSON instead of installing")
     q = sub.add_parser("on", help="activate the policy for this repository")
     q.add_argument("--repo", default=".")
+    q.add_argument("--mode", choices=policy.MODES, default="trajectory",
+                   help="trajectory: reminders only (default); autoresearch: also block compaction and "
+                        "inherited-context subagents, and close out at the final reminder")
     q.add_argument("--agent", **agent)
-    q.add_argument("--window", type=int, help="context window in tokens (default: transcript, else 200000)")
-    q.add_argument("--warn-fraction", type=float, help="closeout at this fraction of the window (default 0.6)")
-    q.add_argument("--compact-limit", type=int, help="the agent's own compaction ceiling, if lower")
+    q.add_argument("--window", type=int, help="context window in tokens (default: what the transcript reports)")
+    q.add_argument("--compact-limit", type=int, help="the agent's own compaction ceiling, if below the window")
+    q.add_argument("--warn-fraction", type=float, help="final reminder at this fraction of the ceiling (default 0.75)")
+    q.add_argument("--reserve", type=int, help="tokens the final reminder leaves free at least (default 100000)")
+    q.add_argument("--checkpoint-fraction", type=float,
+                   help="a reminder every this fraction of the ceiling in growth (default 0.2; 0 turns them off)")
     q = sub.add_parser("off", help="deactivate the policy (file kept)")
     q.add_argument("--repo", default=".")
     q = sub.add_parser("status", help="policy, hooks files, per-session usage, notes; exit 2 when inactive")
@@ -46,9 +53,21 @@ def parser():
 def status(repo):
     runtime = runtime_dir(repo)
     current = policy.load(runtime)
-    return {"policy": current, "active": bool(current and current.get("active")),
-            "hooks": install.hooks_status(repo), "sessions": policy.sessions(runtime),
-            "notes": notes.inspect(repo)}
+    active = bool(current and current.get("active"))
+    return {"policy": current, "active": active, "mode": policy.mode(current) if active else None,
+            "warnings": install.warnings(repo, current), "hooks": install.hooks_status(repo),
+            "sessions": policy.sessions(runtime), "notes": notes.inspect(repo)}
+
+
+def switch_on(args):
+    runtime = runtime_dir(args.repo)
+    before = policy.load(runtime)
+    value = policy.enable(runtime, args.mode, args.agent, args.window, args.warn_fraction, args.reserve,
+                          args.compact_limit, args.checkpoint_fraction)
+    was = policy.mode(before) if before and before.get("active") else None
+    # Printed, not stored: a bare `on` used to mean autoresearch, so a mode change is said out loud.
+    return {**value, **({"previous_mode": was} if was and was != value["mode"] else {}),
+            "warnings": install.warnings(args.repo, value)}
 
 
 def notes_command(args):
@@ -89,8 +108,7 @@ def main(argv=None):
             else:
                 value = install.install(args.repo, args.agent, args.uninstall)
         elif args.cmd == "on":
-            value = policy.enable(runtime_dir(args.repo), args.agent, args.window,
-                                  args.warn_fraction, args.compact_limit)
+            value = switch_on(args)
         elif args.cmd == "off":
             value = policy.disable(runtime_dir(args.repo))
         elif args.cmd == "status":

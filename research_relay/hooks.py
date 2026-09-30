@@ -1,9 +1,10 @@
-"""Hook boundary: read the policy and payload, estimate usage, return hook output. Never raises."""
+"""Hook boundary: read the policy and payload, let the two layers answer, return hook output. Never raises."""
 
+import copy
 import os
 
-from . import policy
-from .state import RelayError
+from . import autoresearch, context, policy, trajectory
+from .state import RelayError, lock
 
 
 def handle(payload, backend):
@@ -13,7 +14,8 @@ def handle(payload, backend):
     except Exception as exc:  # noqa: BLE001  the runner needs one JSON object whatever broke
         message = f"research-relay hook failed: {exc}"
         if event == "PreCompact":
-            return backend.block_compaction(message)  # fail closed on compaction only
+            # Fail closed on compaction only. A policy read as trajectory has already answered by now.
+            return backend.block_compaction(message)
         return {"systemMessage": message}
 
 
@@ -26,24 +28,23 @@ def _handle(payload, backend, event):
     active = policy.load(runtime) if runtime else None
     if not active or not active.get("active"):
         return {}  # unrelated repositories and switched-off ones see nothing
-    if event == "SessionStart":
-        return _context(event, policy.COMPACTED if payload.get("source") == "compact" else policy.SESSION_START)
-    if event == "PreToolUse":
-        return _pre_tool_use(payload, backend)
-    session_id = payload.get("session_id")
-    state = policy.session(runtime, session_id)
+    auto = policy.mode(active) == "autoresearch"
+    # Enforcement comes from the mode alone and applies to subagents too.
     if event == "PreCompact":
-        state.setdefault("precompact_blocked", []).append(
-            {"trigger": payload.get("trigger"), "at": policy.now()})
-        policy.save_session(runtime, session_id, state)
-        return backend.block_compaction(policy.PRECOMPACT)
-    if event == "UserPromptSubmit":
-        if state.get("feedback_emitted"):
-            return {}
-        state["feedback_emitted"] = True
-        policy.save_session(runtime, session_id, state)
-        return _context(event, policy.FEEDBACK)
-    return _post_tool_use(payload, backend, active, runtime, session_id, state)
+        return backend.block_compaction(autoresearch.PRECOMPACT) if auto else {}
+    if event == "PreToolUse":
+        return _pre_tool_use(payload, backend) if auto else {}
+    if payload.get("agent_id"):
+        return {}  # a subagent's event: reminders and session state belong to the main thread
+    session_id = payload.get("session_id")
+    # Parallel tool calls fire this hook concurrently; one reminder must reach one of them.
+    with lock(policy.session_path(runtime, session_id).with_suffix(".lock")):
+        state = policy.session(runtime, session_id)
+        before = copy.deepcopy(state)
+        parts = _main_thread(payload, backend, event, active, auto, state)
+        if state != before:
+            policy.save_session(runtime, session_id, state)
+    return _context(event, "\n\n".join(parts)) if parts else {}
 
 
 def _pre_tool_use(payload, backend):
@@ -56,17 +57,54 @@ def _pre_tool_use(payload, backend):
                                    "permissionDecisionReason": reason}}
 
 
-def _post_tool_use(payload, backend, active, runtime, session_id, state):
+def _main_thread(payload, backend, event, active, auto, state):
+    mode = "autoresearch" if auto else "trajectory"
+    told, current = state.get("told"), {"mode": mode, "since": active.get("since")}
+    state["told"] = current
+    if event == "SessionStart":
+        source = payload.get("source")
+        if source in ("compact", "clear"):
+            context.replaced(state)
+        if source == "compact":
+            return [trajectory.COMPACTED] + ([autoresearch.COMPACTED] if auto else [])
+        return _session_text(backend, active, auto)
+    parts = []
+    if told != current:
+        # The policy changed under an open session, or relay was switched on after it started.
+        parts = [trajectory.changed(mode, told)] + _session_text(backend, active, auto)
+    if event == "UserPromptSubmit":
+        if not state.get("feedback_emitted"):
+            state["feedback_emitted"] = True
+            parts.append(trajectory.FEEDBACK)
+        return parts
+    return parts + _reminder(payload, backend, active, auto, state)
+
+
+def _session_text(backend, active, auto):
+    parts = [trajectory.SESSION]
+    if not (active.get("context_window") or backend.REPORTS_WINDOW):
+        parts.append(trajectory.UNMONITORED)
+    if auto:
+        parts.append(autoresearch.SESSION)
+    return parts
+
+
+def _reminder(payload, backend, active, auto, state):
     usage = backend.read_usage(payload.get("transcript_path"))
     if not usage:
-        return {}
-    limit = policy.threshold(active, usage.get("window"))
-    state["last_usage"] = {**usage, "threshold": limit}
-    emit = usage["used"] >= limit and not state.get("closeout_emitted_at")
-    if emit:
-        state["closeout_emitted_at"] = policy.now()
-    policy.save_session(runtime, session_id, state)
-    return _context("PostToolUse", policy.CLOSEOUT) if emit else {}
+        return []
+    limits = context.thresholds(active, usage.get("window"))
+    if not limits:
+        state["last_usage"] = usage
+        return []
+    result = context.observe(state, usage["used"], limits)
+    state["last_usage"] = {**usage, **limits}
+    if not result:
+        return []
+    final = trajectory.final(usage["used"], limits["ceiling"])
+    if auto and usage["used"] >= limits["final"]:
+        return [autoresearch.closeout(final)]  # every reminder past the threshold is the closeout
+    return [final if result[0] == "final" else trajectory.checkpoint(result[1])]
 
 
 def _context(event, text):

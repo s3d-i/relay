@@ -5,16 +5,17 @@ import shlex
 import sys
 
 from . import HOOK_EVENTS, hook_map, installed, last_value, merge_hooks
-from ..policy import FRESH_CONTEXT_DENIED
+from ..autoresearch import FRESH_CONTEXT_DENIED
 from ..state import RelayError, read_json, write_json
 
 
 NAME = "codex"
 SKILL_DIR = ".agents/skills"
 HOOKS_FILE = ".codex/hooks.json"
-DEFAULT_WINDOW = None  # the rollout carries model_context_window
+REPORTS_WINDOW = True  # the rollout carries model_context_window
 TRUST = "Open the project in Codex and trust the hooks with /hooks; untrusted hooks never run."
-DESCRIPTION = "research-relay: no compaction, fresh-context subagents, closeout before the context wall."
+DESCRIPTION = ("research-relay: research trajectory reminders; optional auto-research mode "
+               "(no compaction, fresh-context subagents, closeout).")
 
 
 def hooks_file(repo):
@@ -47,6 +48,14 @@ def hooks_installed(repo, command):
     except RelayError:
         return False
     return installed(current.get("hooks"), hook_map(command))
+
+
+def warnings(repo, policy):
+    # Codex resolves its compaction ceiling across -c, project, profile and user config; relay does not read it.
+    if policy and policy.get("active") and policy.get("agent") == NAME and not policy.get("compact_limit"):
+        return ["No --compact-limit: relay does not know Codex's automatic compaction ceiling "
+                "(model_auto_compact_token_limit), so reminders are computed from the context window alone."]
+    return []
 
 
 def block_compaction(reason):

@@ -9,7 +9,7 @@ Run on the machine that runs Codex; the hooks file holds absolute paths.
 
 ```sh
 python3 -m research_relay install --repo /path/to/project --agent codex
-python3 -m research_relay on      --repo /path/to/project --agent codex
+python3 -m research_relay on      --repo /path/to/project --agent codex --compact-limit 600000
 ```
 
 `install`:
@@ -29,11 +29,12 @@ Trust: open the project in the app and trust the hooks once through `/hooks`. re
 check or grant trust. A session opened before the hooks file existed may not have loaded it;
 open a fresh one.
 
-`model_auto_compact_token_limit`: Codex has its own auto-compaction ceiling in its config. The
-PreCompact hook blocks the attempt whichever trigger fires, but if that ceiling sits below
-relay's threshold, the blocked attempt comes before the closeout reminder. Pass
-`--compact-limit N` to `relay on` with that value so the threshold is computed against it, or
-raise the ceiling in the Codex config.
+`--compact-limit`: Codex compacts on its own at `model_auto_compact_token_limit`, which can
+sit below the window the rollout reports (for example 600000 under a window of 760000). Pass
+that value so the reminders are computed against it. relay does not read Codex's
+configuration: the key can come from `-c`, a trusted project file, a profile file or the user
+file, and a file reader cannot know which applied to a running session. `relay on` and
+`relay status` warn while the policy names Codex and has no limit.
 
 ## Verified facts
 
@@ -41,17 +42,29 @@ raise the ceiling in the Codex config.
   uses `{"continue": false, "stopReason": reason, "systemMessage": reason}`.
 - Usage: the last `event_msg` in the rollout with `payload.type == "token_count"` and a non-null
   `payload.info`. `used = info.last_token_usage.total_tokens`,
-  `window = info.model_context_window`. relay reads the last 256 KiB of the file.
+  `window = info.model_context_window`. relay reads the last 256 KiB of the file. In the pinned
+  build the `token_count` for a model request is written after that request's tool output, so
+  at PostToolUse the reading can lag by one request.
+- A compaction writes a `compacted` record followed by a `token_count` with the reduced usage
+  (seen in a 0.122 rollout: 171236 before, 13028 after).
 - The PreToolUse matcher for `spawn_agent` is `Agent`. `fork_turns` is not in the public docs,
   but the pinned build's own tool instructions say: omitted or `"all"` forks the full history;
-  `"none"` starts fresh; a positive integer string forks that many turns. relay denies
-  everything except `"none"`. Older builds used a `fork_context` boolean instead.
-- Worker events carry the parent `session_id`; their compaction is blocked under the same policy.
+  `"none"` starts fresh; a positive integer string forks that many turns. Auto-research mode
+  denies everything except `"none"`. Older builds used a `fork_context` boolean instead.
+- Worker events carry the parent `session_id`. The pinned build's hook input schemas include an
+  optional `agent_id`; relay gives an event with `agent_id` enforcement only.
+- The SessionStart input schema accepts `source` startup, resume, clear, compact and fork.
+
+Not yet captured from a live session on the pinned build: whether worker payloads actually
+carry `agent_id`, and the `SessionStart` with `source: compact` after a real compaction. If
+`agent_id` is missing, a worker's tool call can receive a reminder meant for the main thread.
+If the compact event is missing, the final reminder re-arms only after usage drops by a tenth
+of the ceiling below its threshold.
 
 ## Instructions for the main thread
 
-- Spawn every worker with `spawn_agent` and `fork_turns: "none"`. Omission defaults to inherited
-  history and is denied. New agent per independent task.
-- Do not run `/compact`. It is blocked; the block message is expected.
-- The closeout reminder arrives as additional context after a tool call. Follow
-  [SKILL.md, Close out](../SKILL.md#5-close-out).
+- Reminders arrive as additional context after a tool call. Follow
+  [SKILL.md, Context reminders](../SKILL.md#4-context-reminders).
+- In auto-research mode: spawn every worker with `spawn_agent` and `fork_turns: "none"`
+  (omission inherits history and is denied); do not run `/compact`; follow
+  [auto-research](autoresearch.md).

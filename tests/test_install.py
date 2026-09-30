@@ -21,14 +21,16 @@ class InstallTests(RepoCase):
         settings = self.repo / ".claude/settings.local.json"
         settings.parent.mkdir()
         foreign = {"matcher": "Bash", "hooks": [{"type": "command", "command": "echo foreign"}]}
-        settings.write_text(json.dumps({"permissions": {"allow": ["Bash(ls)"]},
+        settings.write_text(json.dumps({"permissions": {"allow": ["Bash(ls)"]}, "autoCompactEnabled": False,
                                         "hooks": {"PreToolUse": [foreign]}}))
         code, value = self.cli("install", "--repo", self.repo, "--agent", "claude")
         self.assertEqual(code, 0, value)
         self.assertTrue(value["installed"] and value["hooks_changed"])
         after = json.loads(settings.read_text())
         self.assertEqual(after["permissions"], {"allow": ["Bash(ls)"]})
+        # relay no longer writes this key and cannot tell whose it is: kept and reported.
         self.assertIs(after["autoCompactEnabled"], False)
+        self.assertIn("autoCompactEnabled", value["warnings"][0])
         self.assertEqual(after["hooks"]["PreToolUse"][0], foreign)
         ours = after["hooks"]["PreToolUse"][1]
         self.assertEqual(ours["matcher"], "Agent")
