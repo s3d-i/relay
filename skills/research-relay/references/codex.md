@@ -42,9 +42,10 @@ raise the ceiling in the Codex config.
 - Usage: the last `event_msg` in the rollout with `payload.type == "token_count"` and a non-null
   `payload.info`. `used = info.last_token_usage.total_tokens`,
   `window = info.model_context_window`. relay reads the last 256 KiB of the file.
-- The PreToolUse matcher for `spawn_agent` is `Agent`. `tool_input.fork_turns` is observed,
-  not documented: any value other than `"none"` (including omission) inherits history and is
-  denied.
+- The PreToolUse matcher for `spawn_agent` is `Agent`. `fork_turns` is not in the public docs,
+  but the pinned build's own tool instructions say: omitted or `"all"` forks the full history;
+  `"none"` starts fresh; a positive integer string forks that many turns. relay denies
+  everything except `"none"`. Older builds used a `fork_context` boolean instead.
 - Worker events carry the parent `session_id`; their compaction is blocked under the same policy.
 
 ## Instructions for the main thread

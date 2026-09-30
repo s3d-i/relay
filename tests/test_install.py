@@ -51,11 +51,14 @@ class InstallTests(RepoCase):
         hooks_file = self.repo / ".codex/hooks.json"
         hooks_file.parent.mkdir()
         stale = {"hooks": [{"type": "command", "command": "python3 /old/research-relay/scripts/relay.py hook"}]}
-        hooks_file.write_text(json.dumps({"hooks": {"Stop": [stale], "PreCompact": [stale]}}))
+        hooks_file.write_text(json.dumps({"description": "research-relay experimental hooks",
+                                          "hooks": {"Stop": [stale], "PreCompact": [stale]}}))
         code, value = self.cli("install", "--repo", self.repo, "--agent", "codex")
         self.assertEqual(code, 0, value)
         self.assertIn("/hooks", value["next"])
-        hooks = json.loads(hooks_file.read_text())["hooks"]
+        written = json.loads(hooks_file.read_text())
+        self.assertEqual(written["description"], codex.DESCRIPTION)
+        hooks = written["hooks"]
         self.assertEqual(len(hooks), 5)  # the stale Stop entry from an older relay is gone
         self.assertNotIn("Stop", hooks)
         self.assertEqual(len(hooks["PreCompact"]), 1)

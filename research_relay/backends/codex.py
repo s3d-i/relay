@@ -34,8 +34,8 @@ def install_hooks(repo, command):
     path = hooks_file(repo)
     current = read_json(path, {})  # a non-JSON file is foreign: RelayError, nothing written
     changed = merge_hooks(current.setdefault("hooks", {}), hook_map(command))
-    if "description" not in current:
-        current["description"], changed = DESCRIPTION, True
+    if current.get("description") != DESCRIPTION and "research-relay" in str(current.get("description", DESCRIPTION)):
+        current["description"], changed = DESCRIPTION, True  # ours or absent: refresh; foreign: keep
     if changed:
         write_json(path, current)
     return {"hooks_file": str(path), "hooks_changed": changed, "next": TRUST}
