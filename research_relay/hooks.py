@@ -50,7 +50,14 @@ def handle(payload):
             marker = read_json(marker_file)
             transcript = payload.get("transcript_path")
             if transcript and str(Path(transcript).resolve()) != marker["rollout"]:
-                return {}  # A child can share session_id and cwd; its transcript differs.
+                # Native child hooks identify their parent session. Extend only
+                # the compaction guard to them: their delivery and lifecycle
+                # events must never consume main receipts or stop its watcher.
+                if event == "PreCompact":
+                    return {"continue": False,
+                            "stopReason": "research-relay forbids compaction in this opted-in session's workers",
+                            "systemMessage": "research-relay: Worker compaction blocked. Preserve partial results and artifact paths for the main agent."}
+                return {}
             # A bounded last-receipt per event, never a transcript/event database.
             if transcript:
                 marker.setdefault("hook_receipts", {})[event] = {

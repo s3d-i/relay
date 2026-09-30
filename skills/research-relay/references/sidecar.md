@@ -6,6 +6,8 @@ Desktop verification on 2026-09-29 covers live usage observation, native deliver
 
 Compaction refusal is established for the installed Desktop app by the live user test and the [documented PreCompact contract](https://learn.chatgpt.com/docs/hooks): a matching `continue: false` stops compaction before it runs. Another compaction or archive test is not an activation prerequisite. The watcher retains its latest observation while no new usage record arrives and keeps reminders pending until a native hook delivers them. Neither condition has a failure deadline.
 
+The PreCompact handler also blocks worker events carrying the opted-in parent's `session_id` within the same Git common directory, including linked worktrees. A worker's different `transcript_path` no longer excludes it from that guard. Its other events remain separate: they cannot consume the main thread's delivery probe or reminders, record main-thread receipts, or stop its watcher. Regression tests cover this routing; the earlier Desktop live test covers the main thread only. Native worker delivery and per-worker context monitoring are not established by `protected: true`. Workers still need bounded tasks and recoverable partial results before their context fills.
+
 ## Normal activation
 
 Run through this skill's `scripts/relay.py` inside the actual Desktop main chat:

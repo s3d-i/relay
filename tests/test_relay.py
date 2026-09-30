@@ -164,10 +164,24 @@ class HookTests(RepositoryCase):
 
     def test_unrelated_thread_untouched(self):
         self.assertEqual(self.hook("PreCompact", session_id=T2), {})
+        self.assertEqual(self.hook("PreCompact", session_id=T2,
+                                   transcript_path=str(self.repo / "child.jsonl")), {})
 
-    def test_shared_parent_id_does_not_stop_or_notify_child(self):
-        for event in ("SubagentStop", "Stop", "PostToolUse", "PreCompact"):
+    def test_child_events_do_not_consume_main_delivery_or_lifecycle(self):
+        watcher.queue_notice(self.runtime, T1, "threshold reached")
+        before = marker_path(self.runtime, T1).read_bytes()
+        for event in ("SubagentStop", "Stop", "Interrupt", "SessionEnd", "PostToolUse", "UserPromptSubmit"):
             self.assertEqual(self.hook(event, transcript_path=str(self.repo / "child.jsonl")), {})
+        self.assertEqual(marker_path(self.runtime, T1).read_bytes(), before)
+        self.assertFalse((self.runtime / "stop.json").exists())
+
+    def test_worker_compaction_blocked_without_attesting_main_delivery(self):
+        before = marker_path(self.runtime, T1).read_bytes()
+        for trigger in ("auto", "manual"):
+            result = self.hook("PreCompact", trigger=trigger, turn_id="child-turn",
+                               transcript_path=str(self.repo / "child.jsonl"))
+            self.assertFalse(result["continue"])
+        self.assertEqual(marker_path(self.runtime, T1).read_bytes(), before)
         self.assertFalse((self.runtime / "stop.json").exists())
 
     def test_subagent_stop_never_main_stop(self):
@@ -213,6 +227,8 @@ class HookTests(RepositoryCase):
         git(self.repo, "worktree", "add", "--detach", str(other), "HEAD")
         self.assertEqual(runtime_dir(other), self.runtime)
         self.assertFalse(self.hook("PreCompact", cwd=str(other))["continue"])
+        self.assertFalse(self.hook("PreCompact", cwd=str(other),
+                                   transcript_path=str(other / "child.jsonl"))["continue"])
 
     def test_no_protected_start_even_with_guard_marker(self):
         output = io.StringIO()
