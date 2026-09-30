@@ -2,6 +2,3 @@ __pycache__/
 *.py[cod]
 .venv/
 .DS_Store
-.agents/skills/research-relay
-.codex/hooks.json
-/artifacts/private/

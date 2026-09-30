@@ -1,149 +1,103 @@
 import argparse
 import json
-import os
-from pathlib import Path
-import plistlib
 import subprocess
 import sys
 
-from . import hooks, links, notes, probes, protection, watcher
-from .rollout import locate, threshold
-from .state import RelayError, thread_id
-
-
-ROOT = Path(__file__).resolve().parent.parent
-
-
-def doctor(repo, identity=None, home=None):
-    value = {"protected": False, "research_start": "blocked", "blockers": [],
-             "available": ["portable notes workflow", "protected Desktop sidecar", "native-hook probe"],
-             "notes": notes.inspect(repo)}
-    for app in (Path("/Applications/ChatGPT.app"), Path("/Applications/Codex.app")):
-        plist = app / "Contents/Info.plist"
-        binary = app / "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
-        if plist.exists():
-            data = plistlib.loads(plist.read_bytes())
-            value["installed_app"] = {"path": str(app), "version": data.get("CFBundleShortVersionString"),
-                                      "build": data.get("CFBundleVersion")}
-            if binary.exists():
-                result = subprocess.run([str(binary), "--version"], capture_output=True, text=True, timeout=10)
-                value["installed_app"]["bundled_cli"] = result.stdout.strip()
-            break
-    try:
-        reader, checked = protection.environment(repo, identity, home)
-        value["binding"] = {"thread_id": identity, "turn_id": reader.turn,
-                            "rollout": str(reader.path), "meta": reader.meta,
-                            "latest_request_estimate": reader.usage}
-        value["compact_limit"] = checked["compact_limit"]
-        value["host_pid"] = checked["host_pid"]
-        value["verified_hooks"] = list(checked["capabilities"]["hooks"])
-        value["hook_delivery"] = probes.inspect(repo, identity)
-        protection.check_delivery(repo, reader)
-        if not reader.usage:
-            raise RelayError("Waiting for the first main-turn usage record.")
-        value["watcher"] = watcher.status(repo, identity)
-        # Activation/status expose delegation instructions; this diagnostic can
-        # independently discover closeout from usage newer than watcher state.
-        value["watcher"].pop("delegation_policy", None)
-        active = value["watcher"]
-        if active.get("live") and not active["protected"]:
-            raise RelayError(active.get("reason", "An unprotected watcher occupies the repository; stop its owning turn first."))
-        value["protected"] = active["protected"]
-        value["research_start"] = "protected" if active["protected"] else "ready"
-        value["warn_at"] = threshold(reader.usage["window"], checked["compact_limit"])
-        if reader.usage["used"] >= value["warn_at"] or active.get("status", "").startswith("warning-"):
-            value["research_start"] = "closeout"
-    except (RelayError, OSError, ValueError, subprocess.SubprocessError) as exc:
-        value["blockers"].append(str(exc))
-    return value
+from . import __version__, backends, hooks, install, links, notes, policy
+from .state import RelayError, runtime_dir
 
 
 def parser():
-    p = argparse.ArgumentParser(description="Research notes and a scoped Codex context sidecar; no LLM calls.")
+    p = argparse.ArgumentParser(
+        prog="relay", description="Research notes on a relay-notes branch; hooks that ban compaction, "
+        "force fresh-context subagents and ask for a handoff before the context wall.")
+    p.add_argument("--version", action="version", version=__version__)
     sub = p.add_subparsers(dest="cmd", required=True)
-    for command in ("doctor", "start", "probe-start", "status", "stop", "_watch", "notes", "hooks"):
-        q = sub.add_parser(command)
-        q.add_argument("--repo", default=".")
-        if command in ("doctor", "start", "probe-start", "status", "stop", "hooks"):
-            q.add_argument("--thread-id", default=os.environ.get("CODEX_THREAD_ID"))
-        if command in ("doctor", "start", "probe-start", "hooks"):
-            q.add_argument("--codex-home", default=os.environ.get("CODEX_HOME", str(Path.home() / ".codex")))
-        if command == "probe-start":
-            q.add_argument("--rollout", type=Path)
-            q.add_argument("--host-pid", type=int, required=True)
-            q.add_argument("--compact-limit", type=int, required=True,
-                           help="effective main-thread compaction ceiling; do not guess from model capacity")
-        if command in ("start", "probe-start"):
-            q.add_argument("--poll", type=float, default=1.0)
-        if command == "_watch":
-            q.add_argument("--nonce", required=True)
-        if command == "notes":
-            q.add_argument("action", choices=("init", "status", "links", "commit"))
-            q.add_argument("--path", action="append", default=[],
-                           help="reviewed commit file, or one links query file (default: RESEARCH.md)")
-            q.add_argument("-m", "--message", default="")
-        if command == "hooks":
-            q.add_argument("action", choices=("prepare", "probe", "ack", "status"))
-            q.add_argument("--token", default="")
-    sub.add_parser("hook")
-    sub.add_parser("render-hooks")
+    agent = dict(choices=backends.NAMES, metavar="{codex,claude}")
+    q = sub.add_parser("install", help="symlink the skill, add ignore rules, write the hooks file")
+    q.add_argument("--repo", default=".")
+    q.add_argument("--agent", required=True, **agent)
+    q.add_argument("--uninstall", action="store_true", help="remove the skill symlink only")
+    q.add_argument("--print", action="store_true", help="print the hooks JSON instead of installing")
+    q = sub.add_parser("on", help="activate the policy for this repository")
+    q.add_argument("--repo", default=".")
+    q.add_argument("--agent", **agent)
+    q.add_argument("--window", type=int, help="context window in tokens (default: transcript, else 200000)")
+    q.add_argument("--warn-fraction", type=float, help="closeout at this fraction of the window (default 0.6)")
+    q.add_argument("--compact-limit", type=int, help="the agent's own compaction ceiling, if lower")
+    q = sub.add_parser("off", help="deactivate the policy (file kept)")
+    q.add_argument("--repo", default=".")
+    q = sub.add_parser("status", help="policy, hooks files, per-session usage, notes; exit 2 when inactive")
+    q.add_argument("--repo", default=".")
+    q = sub.add_parser("hook", help="hook entry point: payload JSON on stdin, output JSON on stdout")
+    q.add_argument("--agent", required=True, **agent)
+    q = sub.add_parser("notes", help="init | status | links | commit on the relay-notes worktree")
+    q.add_argument("action", choices=("init", "status", "links", "commit"))
+    q.add_argument("--repo", default=".")
+    q.add_argument("--path", action="append", default=[],
+                   help="reviewed file to commit, or one links query file (default RESEARCH.md)")
+    q.add_argument("-m", "--message", default="")
     return p
+
+
+def status(repo):
+    runtime = runtime_dir(repo)
+    current = policy.load(runtime)
+    return {"policy": current, "active": bool(current and current.get("active")),
+            "hooks": install.hooks_status(repo), "sessions": policy.sessions(runtime),
+            "notes": notes.inspect(repo)}
+
+
+def notes_command(args):
+    if args.action == "init":
+        return notes.init(args.repo)
+    if args.action == "status":
+        return notes.inspect(args.repo)
+    if args.action == "links":
+        path = notes.find(args.repo)
+        if path is None:
+            raise RelayError("No notes worktree. Run notes status/init first.")
+        if len(args.path) > 1:
+            raise RelayError("Query one notes file at a time with --path.")
+        return links.neighborhood(path, args.path[0] if args.path else "RESEARCH.md")
+    return notes.commit(args.repo, args.path, args.message)
+
+
+def hook(agent):
+    backend = backends.get(agent)
+    try:
+        payload = json.load(sys.stdin)
+    except ValueError as exc:
+        payload = f"unreadable payload: {exc}"  # handle() reports a non-object as a failure
+    return hooks.handle(payload, backend)
 
 
 def main(argv=None):
     args = parser().parse_args(argv)
+    if args.cmd == "hook":
+        print(json.dumps(hook(args.agent), ensure_ascii=False))
+        return 0  # decisions travel in the JSON; a non-zero exit would mean "hook broken"
     code = 0
     try:
-        if args.cmd == "doctor":
-            value = doctor(args.repo, args.thread_id, args.codex_home)
-            code = 0 if value["research_start"] in ("ready", "protected") else 2
-        elif args.cmd == "start":
-            value = watcher.start(args.repo, args.thread_id, args.codex_home, args.poll)
-            code = 0 if value["protected"] and value["research_start"] == "protected" else 2
-        elif args.cmd == "probe-start":
-            identity = thread_id(args.thread_id)
-            path = args.rollout or locate(args.codex_home, identity)
-            value = watcher.start_probe(args.repo, identity, path, args.host_pid,
-                                        args.compact_limit, args.poll)
+        if args.cmd == "install":
+            backend = backends.get(args.agent)
+            if args.print:
+                value = backend.render_hooks(backend.hook_command(install.LAUNCHER))
+            else:
+                value = install.install(args.repo, args.agent, args.uninstall)
+        elif args.cmd == "on":
+            value = policy.enable(runtime_dir(args.repo), args.agent, args.window,
+                                  args.warn_fraction, args.compact_limit)
+        elif args.cmd == "off":
+            value = policy.disable(runtime_dir(args.repo))
         elif args.cmd == "status":
-            value = watcher.status(args.repo, args.thread_id)
-        elif args.cmd == "stop":
-            value = watcher.stop(args.repo, args.thread_id)
-        elif args.cmd == "_watch":
-            return watcher.watch(args.repo, args.nonce)
-        elif args.cmd == "hook":
-            value = hooks.handle(json.load(sys.stdin))
-        elif args.cmd == "render-hooks":
-            value = hooks.configuration(sys.executable, ROOT / "skills/research-relay/scripts/relay.py")
-        elif args.cmd == "hooks":
-            if args.action == "prepare":
-                value = probes.prepare(args.repo)
-            elif args.action == "probe":
-                value = probes.arm(args.repo, args.thread_id, args.codex_home)
-            elif args.action == "ack":
-                value = probes.acknowledge(args.repo, args.thread_id, args.token)
-            else:
-                value = probes.inspect(args.repo, args.thread_id)
-        elif args.cmd == "notes":
-            if args.action == "init":
-                value = notes.init(args.repo)
-            elif args.action == "status":
-                value = notes.inspect(args.repo)
-            elif args.action == "links":
-                path = notes.find(args.repo)
-                if path is None:
-                    raise RelayError("No notes worktree. Run notes status/init first.")
-                if len(args.path) > 1:
-                    raise RelayError("Query one notes file at a time with --path.")
-                value = links.neighborhood(path, args.path[0] if args.path else "RESEARCH.md")
-            else:
-                value = notes.commit(args.repo, args.path, args.message)
+            value = status(args.repo)
+            code = 0 if value["active"] else 2
+        else:
+            value = notes_command(args)
         print(json.dumps(value, ensure_ascii=False, indent=2))
     except (RelayError, OSError, ValueError, subprocess.SubprocessError) as exc:
-        if args.cmd == "hook":
-            print(json.dumps({"systemMessage": f"research-relay hook failed; NOT protected: {exc}"}))
-        else:
-            print(json.dumps({"error": str(exc), "protected": False}, ensure_ascii=False), file=sys.stderr)
+        print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr)
         return 2
     return code
 

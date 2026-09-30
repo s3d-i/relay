@@ -1,39 +1,123 @@
 # relay
 
-relay is an evolving tool for personal research, not yet ready for a community release. Its aim is **epistemic durability**: a fresh agent should still understand what we are asking, why we arrived here, and which grounds for our understanding deserve another look.
+relay keeps a long research session going without context compaction. It is a small Python
+tool (3.10+, stdlib only) that hooks into Claude Code or Codex Desktop and keeps research
+notes on a separate Git branch. It is a personal tool, not a release.
 
-`RESEARCH.md` is the entry point for the current focus. It explains enough to join the discussion, then connects to experiments, code, counterexamples, human feedback, and emerging questions. Materials can connect laterally, unfold into further detail, and revise the entry point itself. The early two-layer layout is only a starting point. No document kind is required; observations, explanations, and decisions can stay together when their relationship matters.
+It does five things:
 
-Human prompts, answers to agent questions, and selections among model-written options have distinct origins. Original wording stays in private local records. Agent annotations separately identify the question, code state, and results being referred to. Scientific judgments remain answerable to evidence; model summaries cannot replace a person's actual expression of goals, priorities, or authorization.
+1. **Bans compaction.** A PreCompact hook blocks compaction in the main thread and in its
+   subagents.
+2. **One main thread.** The main thread waits for your instructions. Subagents do the real work.
+3. **Handoff before the wall.** When context usage crosses a threshold, a hook tells the main
+   agent to close out: write notes, stop workers, end the turn. It does not compact.
+4. **Fresh-context subagents, enforced.** A PreToolUse hook denies spawning a subagent that
+   inherits the parent conversation.
+5. **A `relay-notes` branch.** A separate worktree and branch hold `RESEARCH.md` (the entry
+   point), linked materials, and Git-ignored private human inputs. A fresh session reads it
+   and continues.
 
-Research materials live on a separate `relay-notes` branch and worktree by default. They hold revisable working understanding. Moving conclusions into formal project documentation takes an explicit decision; the code repository need not be reorganized around relay's conventions.
+## How it works
 
-Local use requires Git and Python 3.10+:
+`relay on` writes a policy for the repository to `<git-common-dir>/research-relay/policy.json`.
+Every hook call reads it. If the policy is absent or `active: false`, the hook returns `{}` and
+the agent behaves as usual. Per-session state (last usage, closeout emitted) sits next to it.
+
+| Event | What relay does | Enforced? |
+|---|---|---|
+| PreCompact | Blocks compaction, manual or automatic. Subagent events carry the parent session id and are blocked the same way. Fails closed: an internal error still blocks. | Hook |
+| SessionStart | On startup, resume and clear: injects a short note that relay is active, that `RESEARCH.md` on `relay-notes` is the entry point, and the delegation policy. On `compact`: says compaction should not have happened. | Injection by hook; the policy text is instruction-only |
+| UserPromptSubmit | First prompt of a session: the human-feedback provenance guidance. Later prompts: nothing. | Instruction-only |
+| PreToolUse, matcher `Agent` | Denies a spawn that would inherit the conversation (Claude Code: `subagent_type: "fork"`; Codex: `fork_turns` other than `"none"`). Everything else is allowed. | Hook |
+| PostToolUse | Reads the tail of the transcript (last 256 KiB) to estimate context usage. Once per session, when usage reaches the threshold, injects the closeout reminder. | Delivery by hook; acting on it is instruction-only |
+
+The closeout reminder fires at `warn_fraction` of the context window (default 0.6). Codex
+reports the window in its transcript; Claude Code does not, so the policy holds it (default
+200000, `--window N`, which also overrides a transcript value). With `--compact-limit N` the
+reminder fires no later than 0.8 times the lower of window and limit, so closeout has room
+before the app would try to compact.
+
+relay does not create agents, check handoff quality, or verify that the main thread waits.
+That discipline lives in the skill text and in the SessionStart note.
+
+## Install and run
+
+Clone relay anywhere. Commands run as `python3 <relay-checkout>/skills/research-relay/scripts/relay.py ...`
+or, from the checkout, `python3 -m research_relay ...`. Below, `relay` stands for either.
 
 ```sh
-python3 scripts/install_skill.py --repo /absolute/path/research-project
-python3 -m research_relay notes --repo /absolute/path/research-project status
+relay install --repo /path/to/project --agent claude   # or --agent codex
+relay on      --repo /path/to/project
+relay status  --repo /path/to/project
+relay off     --repo /path/to/project
 ```
 
-Open a fresh session manually and invoke `$research-relay`. Read and align before creating or updating notes. The installer creates a project-local skill symlink and adds missing root `.gitignore` rules for `/.agents/skills/research-relay`, `/.codex/hooks.json`, and `/artifacts/private/`, preserving existing content. Rerunning it updates existing installations without duplicating rules. Already tracked local files are reported and remain tracked; uninstall removes the skill link and retains the ignore rules. The installer does not change global settings or trust hooks. Subsequent sessions remain a human choice.
+`install` symlinks the skill into the project, adds `.gitignore` rules for the symlink, the
+hooks file and `/artifacts/private/`, and writes or merges the hooks file. It never removes
+hooks it did not write. `--print` only prints the hooks JSON. `--uninstall` removes the link only;
+the hooks file, ignore rules, notes and policy stay. `on` takes `--agent`, `--window N`, `--warn-fraction F`,
+`--compact-limit N`. `status` prints the policy, whether the hooks file is present and
+matches, last usage and closeout state per session, and the notes worktree; exit 0 when
+active, 2 when not.
 
-- [Skill](skills/research-relay/SKILL.md): resume research, respond to human intervention, and close out.
-- [Material convention](skills/research-relay/references/convention.md): preserve understanding, provenance, and useful connections.
-- [Sidecar](skills/research-relay/references/sidecar.md): protected activation, context reminders, and their limits.
+The runtime does not verify the host. Correctness rests on the pinned versions below and on
+you having trusted the hooks once. If you upgrade either app, re-check the facts in the
+reference docs.
 
-`notes init/status/links/commit` operates on the separate notes worktree. `links --path <file>` shows outgoing links and backlinks on demand, without storing a graph or judging research claims. Original human inputs stay in Git-ignored `artifacts/private/`; committing notes does not back them up.
+### Claude Code, pinned 2.1.285
 
-To enable protection inside the actual Desktop main chat, run:
+- Skill link: `<project>/.claude/skills/research-relay`. Invoke with `/research-relay`.
+- Hooks: merged into `<project>/.claude/settings.local.json`; other keys are kept. No trust prompt.
+- Command: `python3 "$CLAUDE_PROJECT_DIR/.claude/skills/research-relay/scripts/relay.py" hook --agent claude`.
+  No absolute paths, so the file works on both machines.
+- `install` also sets `"autoCompactEnabled": false` there. The PreCompact block still catches `/compact`.
+- Details: [references/claude-code.md](skills/research-relay/references/claude-code.md).
+
+### Codex Desktop, pinned ChatGPT.app 26.924.22138 (bundled codex-cli 0.158.0-alpha.2.1)
+
+- Skill link: `<project>/.agents/skills/research-relay`. Invoke with `$research-relay`.
+- Hooks: `<project>/.codex/hooks.json`. Run `install` on the machine that runs Codex; the
+  command holds absolute paths because Codex sets no project env var.
+- Trust the hooks once in the app through `/hooks`. relay does not check trust.
+- Details: [references/codex.md](skills/research-relay/references/codex.md).
+
+Then open a fresh chat in the project and invoke the skill ([SKILL.md](skills/research-relay/SKILL.md)):
+it reads the notes, aligns with you, checks `relay status`, and delegates.
+
+## Notes workflow
 
 ```sh
-python3 -m research_relay start --repo /absolute/path/research-project
-python3 -m research_relay doctor --repo /absolute/path/research-project
+relay notes init   --repo /path/to/project
+relay notes status --repo /path/to/project
+relay notes links  --repo /path/to/project --path RESEARCH.md
+relay notes commit --repo /path/to/project --path RESEARCH.md --path artifacts/x.md -m "..."
 ```
 
-`start` discovers the current thread and Desktop host, resolves the explicit compaction ceiling, and checks that all six project Relay hooks are enabled and trusted. If native delivery has not been acknowledged in this turn, it arms a token check and returns `awaiting-native-delivery` (exit 2). Acknowledge only the token received through native hook context, then rerun `start`. Success reports `mode: protected`, `live: true`, and `protected: true`. Missing hook configuration can be prepared with `hooks prepare`; trust remains a native app setting.
+`init` creates the `relay-notes` branch from an empty tree, adds a worktree at
+`<git-common-dir>/research-relay/notes`, appends `/artifacts/private/` to `info/exclude`, and
+writes a template `RESEARCH.md` only if none exists. `status` shows the worktree, uncommitted
+changes, `private_inputs_ignored` and `tracked_private_artifacts`. `links` lists one file's
+outgoing links and backlinks. `commit` commits explicit paths only, rejects `artifacts/private/`,
+refuses when unrelated files are staged, and never pushes.
 
-While protected research is active, the main agent coordinates human intent and feedback, frames bounded work, reviews results, and maintains notes and lifecycle. Subagents perform substantive research, experiments, coding, and verification, one at a time by default; the main spends most execution time in event-based waits and starts no other substantive investigation or worker implementation while they run. Every new subagent must use `spawn_agent` with `fork_turns: "none"`, and every independent task gets a new agent with a self-contained handoff. Successful protected `start`/`status` results expose these instructions in `delegation_policy`, marked instruction-only with unverified compliance. The sidecar never creates agents or verifies delegation behavior; `protected: true` verifies main-thread protection only. Diagnostic output, results outside protected research, and closeout omit the active policy.
+Original human wording (prompts, answers, option selections) stays in
+`artifacts/private/human-inputs/<session-id>.md` in the notes worktree, which Git ignores.
+Shareable notes carry the decision, the agent's interpretation and a citation. The aim is
+epistemic durability: a fresh agent should understand what we are asking, why we got here,
+and which grounds deserve another look. Conventions: [convention.md](skills/research-relay/references/convention.md).
 
-The shared PreCompact handler also rejects worker compaction when Codex delivers the event under the opted-in parent's session ID in the same Git repository. Worker events do not consume main-thread reminders or stop its watcher. This handler behavior has regression coverage; native worker hook delivery and worker context usage are not yet verified by `protected: true`.
+## Limits
 
-`doctor` distinguishes blocked, ready, protected, and closeout. Configuration changes are checked against the current project's protection requirements; unrelated agent settings, other projects' trust records, and unrelated hooks do not end research. Changes to Relay's own definitions, trust, or effective compaction ceiling, binding errors, and loss of guard/delivery evidence revoke protection. Usage silence retains the last observation, and pending reminders wait for the next hook boundary without a deadline. Stop/Interrupt/SessionEnd end monitoring; the thread's compaction guard remains. Each new main turn needs its own activation and delivery check. `probe-start` stays diagnostic and never reports protection. Run `make check` for development checks.
+- Enforced by hooks: the compaction block, the fresh-context deny, delivery of the closeout
+  reminder. Instruction-only: delegation discipline (main thread waits, one worker at a time,
+  self-contained handoffs), provenance rules, and acting on the reminder.
+- Usage is read at hook boundaries. The reminder arrives at the first PostToolUse after the
+  threshold, not mid-thought. A long tool-free stretch gets no reminder.
+- Claude Code: whether PostToolUse fires for tool calls inside a subagent is undocumented. If
+  it does, the transcript is the parent's, so the estimate is still the main thread's.
+  Subagent context is not monitored on either agent.
+- Codex: the `Agent` tool_input fields (`fork_turns`) are observed, not documented.
+- A hook that is not loaded or not trusted is silent. `relay status` checks the file, not the app.
+- Notes are committed to `relay-notes`, never pushed. Private inputs are not in Git; back them up yourself.
+
+Development: `python3 -m unittest discover -s tests` and `python3 scripts/check_skill.py`.

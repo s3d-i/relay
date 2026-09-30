@@ -1,98 +1,89 @@
-from pathlib import Path
+import json
 import subprocess
-import sys
-import tempfile
 import unittest
 
-from research_relay.state import git
+from base import ROOT, RepoCase
+from research_relay.backends import claude, codex
+from research_relay.install import LAUNCHER
 
 
-ROOT = Path(__file__).resolve().parents[1]
-INSTALLER = ROOT / "scripts/install_skill.py"
+SKILL = ROOT / "skills/research-relay"
 
 
-class InstallTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="relay-install-")
-        self.addCleanup(self.tmp.cleanup)
-        self.repo = Path(self.tmp.name).resolve() / "project with spaces"
-        self.repo.mkdir()
-        git(self.repo, "init", "-b", "main")
-        self.ignore = self.repo / ".gitignore"
-        self.target = self.repo / ".agents/skills/research-relay"
-
-    def install(self, *args, expected=0):
-        result = subprocess.run([sys.executable, str(INSTALLER), "--repo", str(self.repo), *args],
-                                capture_output=True, text=True, timeout=30)
-        self.assertEqual(result.returncode, expected, result.stderr)
-        return result
-
+class InstallTests(RepoCase):
     def is_ignored(self, path):
-        result = subprocess.run(["git", "-C", str(self.repo), "check-ignore", "--quiet",
-                                 "--no-index", "--", path], capture_output=True, text=True)
+        result = subprocess.run(["git", "-C", str(self.repo), "check-ignore", "--quiet", "--no-index", "--", path],
+                                capture_output=True, text=True)
         self.assertIn(result.returncode, (0, 1), result.stderr)
         return result.returncode == 0
 
-    def test_install_ignores_only_relay_local_paths(self):
-        self.install()
-        self.assertEqual(self.target.resolve(), ROOT / "skills/research-relay")
-        for path in (".agents/skills/research-relay", ".codex/hooks.json",
-                     "artifacts/private/human-inputs/session.md"):
+    def test_claude_install_merges_settings_and_is_idempotent(self):
+        settings = self.repo / ".claude/settings.local.json"
+        settings.parent.mkdir()
+        foreign = {"matcher": "Bash", "hooks": [{"type": "command", "command": "echo foreign"}]}
+        settings.write_text(json.dumps({"permissions": {"allow": ["Bash(ls)"]},
+                                        "hooks": {"PreToolUse": [foreign]}}))
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "claude")
+        self.assertEqual(code, 0, value)
+        self.assertTrue(value["installed"] and value["hooks_changed"])
+        after = json.loads(settings.read_text())
+        self.assertEqual(after["permissions"], {"allow": ["Bash(ls)"]})
+        self.assertIs(after["autoCompactEnabled"], False)
+        self.assertEqual(after["hooks"]["PreToolUse"][0], foreign)
+        ours = after["hooks"]["PreToolUse"][1]
+        self.assertEqual(ours["matcher"], "Agent")
+        self.assertEqual(ours["hooks"][0]["command"], claude.hook_command(LAUNCHER))
+        self.assertEqual(set(after["hooks"]), {"SessionStart", "UserPromptSubmit", "PreToolUse",
+                                               "PostToolUse", "PreCompact"})
+        target = self.repo / ".claude/skills/research-relay"
+        self.assertEqual(target.resolve(), SKILL)
+        for path in (".claude/skills/research-relay", ".claude/settings.local.json",
+                     "artifacts/private/human-inputs/s.md"):
             self.assertTrue(self.is_ignored(path), path)
-        for path in (".agents/skills/other/SKILL.md", ".codex/config.toml",
-                     "artifacts/result.md", ".gitignore"):
-            self.assertFalse(self.is_ignored(path), path)
+        self.assertFalse(self.is_ignored(".claude/settings.json"))
+        before = (settings.read_bytes(), (self.repo / ".gitignore").read_bytes())
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "claude")
+        self.assertEqual((code, value["hooks_changed"], value["gitignore_changed"]), (0, False, False))
+        self.assertEqual((settings.read_bytes(), (self.repo / ".gitignore").read_bytes()), before)
+        self.assertTrue(self.cli("status", "--repo", self.repo)[1]["hooks"]["claude"]["installed"])
 
-    def test_preserves_existing_bytes_and_repeat_install_is_idempotent(self):
-        original = b"# project rules\r\nbuild/\r\n.agents/skills/research-relay"
-        self.ignore.write_bytes(original)
-        self.install()
-        after = self.ignore.read_bytes()
-        self.assertTrue(after.startswith(original + b"\r\n"))
-        self.assertEqual(after.count(b".agents/skills/research-relay"), 1)
-        self.assertIn(b"/.codex/hooks.json\r\n", after)
-        self.install()
-        self.assertEqual(self.ignore.read_bytes(), after)
+    def test_codex_install_writes_hooks_and_refuses_foreign_file(self):
+        hooks_file = self.repo / ".codex/hooks.json"
+        hooks_file.parent.mkdir()
+        stale = {"hooks": [{"type": "command", "command": "python3 /old/research-relay/scripts/relay.py hook"}]}
+        hooks_file.write_text(json.dumps({"hooks": {"Stop": [stale], "PreCompact": [stale]}}))
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "codex")
+        self.assertEqual(code, 0, value)
+        self.assertIn("/hooks", value["next"])
+        hooks = json.loads(hooks_file.read_text())["hooks"]
+        self.assertEqual(len(hooks), 5)  # the stale Stop entry from an older relay is gone
+        self.assertNotIn("Stop", hooks)
+        self.assertEqual(len(hooks["PreCompact"]), 1)
+        self.assertEqual(hooks["PreToolUse"][0]["matcher"], "Agent")
+        command = hooks["PreCompact"][0]["hooks"][0]["command"]
+        self.assertEqual(command, codex.hook_command(LAUNCHER))
+        self.assertIn(str(LAUNCHER), command)
+        self.assertTrue(command.endswith("hook --agent codex"))
+        self.assertEqual((self.repo / ".agents/skills/research-relay").resolve(), SKILL)
+        self.assertTrue(self.is_ignored(".codex/hooks.json"))
+        hooks_file.write_text("local hooks, not JSON")
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "codex")
+        self.assertEqual(code, 2)
+        self.assertIn("Invalid JSON", value["error"])
+        self.assertEqual(hooks_file.read_text(), "local hooks, not JSON")
 
-    def test_existing_install_gets_missing_ignore_rules(self):
-        self.target.parent.mkdir(parents=True)
-        self.target.symlink_to(ROOT / "skills/research-relay", target_is_directory=True)
-        self.assertIn("Already installed", self.install().stdout)
-        self.assertTrue(self.is_ignored(".agents/skills/research-relay"))
+    def test_print_and_uninstall(self):
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "claude", "--print")
+        self.assertEqual((code, value), (0, claude.render_hooks(claude.hook_command(LAUNCHER))))
+        self.assertFalse((self.repo / ".claude").exists())
+        self.cli("install", "--repo", self.repo, "--agent", "claude")
+        ignore = (self.repo / ".gitignore").read_bytes()
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "claude", "--uninstall")
+        self.assertEqual((code, value["installed"]), (0, False))
+        self.assertFalse((self.repo / ".claude/skills/research-relay").is_symlink())
+        self.assertTrue((self.repo / ".claude/settings.local.json").is_file())
+        self.assertEqual((self.repo / ".gitignore").read_bytes(), ignore)
 
-    def test_conflicting_skill_does_not_change_gitignore(self):
-        self.target.parent.mkdir(parents=True)
-        self.target.write_text("existing skill")
-        self.ignore.write_text("build/\n")
-        self.install(expected=2)
-        self.assertEqual(self.target.read_text(), "existing skill")
-        self.assertEqual(self.ignore.read_text(), "build/\n")
 
-    def test_symlinked_gitignore_is_preserved_before_installing_link(self):
-        original = self.repo.parent / "outside-ignore"
-        original.write_text("build/\n")
-        self.ignore.symlink_to(original)
-        self.install(expected=2)
-        self.assertEqual(original.read_text(), "build/\n")
-        self.assertFalse(self.target.is_symlink())
-
-    def test_uninstall_retains_ignores_and_hook_configuration(self):
-        self.install()
-        before = self.ignore.read_bytes()
-        hooks = self.repo / ".codex/hooks.json"
-        hooks.parent.mkdir()
-        hooks.write_text("local hooks")
-        self.install("--uninstall")
-        self.assertFalse(self.target.is_symlink())
-        self.assertEqual(self.ignore.read_bytes(), before)
-        self.assertEqual(hooks.read_text(), "local hooks")
-
-    def test_already_tracked_local_files_are_reported_and_preserved(self):
-        hooks = self.repo / ".codex/hooks.json"
-        hooks.parent.mkdir()
-        hooks.write_text("tracked hooks")
-        git(self.repo, "add", ".codex/hooks.json")
-        before = git(self.repo, "ls-files", "--stage")
-        self.assertIn("already tracked", self.install().stderr)
-        self.assertEqual(git(self.repo, "ls-files", "--stage"), before)
-        self.assertEqual(hooks.read_text(), "tracked hooks")
+if __name__ == "__main__":
+    unittest.main()

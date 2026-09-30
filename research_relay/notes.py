@@ -1,7 +1,6 @@
 """An ordinary notes branch and isolated worktree, with explicit-path commits."""
 
 from pathlib import Path
-import re
 import subprocess
 
 from .state import RelayError, common_dir, git, lock, runtime_dir
@@ -36,8 +35,6 @@ def protect_private_inputs(repo, path):
     # The independent notes branch does not inherit the code branch's .gitignore.
     # info/exclude is local and shared by the repository's linked worktrees.
     exclude = common_dir(repo) / "info/exclude"
-    if exclude.is_symlink():
-        raise RelayError("Refusing to update symlinked info/exclude; private inputs are not ready.")
     existing = exclude.read_text() if exclude.exists() else ""
     if PRIVATE_IGNORE not in existing.splitlines():
         exclude.parent.mkdir(parents=True, exist_ok=True)
@@ -119,24 +116,8 @@ def commit(repo, paths, message):
                 raise RelayError("Notes paths must be explicit relative filenames.")
             if is_private_artifact(rel):
                 raise RelayError("Private human input artifacts must never be committed; commit only summaries and references.")
-            file = path / rel
-            if not file.resolve().is_relative_to(path.resolve()) or any(
-                    part.is_symlink() for part in [file, *file.parents] if part != path.parent):
-                raise RelayError("Do not commit symlinks or paths outside the notes checkout.")
-            if any(part.startswith(".") or Path(part).stem.lower() in {
-                       "secret", "secrets", "credential", "credentials", "token", "tokens",
-                       "access-token", "access_token", "private-key", "private_key"}
-                   for part in rel.parts):
-                raise RelayError(f"Sensitive/hidden filename rejected: {name}")
-            if file.suffix.lower() not in (".md", ".txt", ".json", ".csv", ".svg", ".png", ".pdf"):
-                raise RelayError(f"Unsupported note asset; link existing experiment data instead: {name}")
-            if file.exists():
-                if not file.is_file() or file.stat().st_size > 1024 * 1024:
-                    raise RelayError(f"Directory/large asset rejected: {name}")
-                if re.search(rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bsk-[A-Za-z0-9_-]{24,}", file.read_bytes()):
-                    raise RelayError(f"Possible secret in {name}; draft preserved.")
-            else:
-                git(path, "ls-files", "--error-unmatch", "--", str(rel))
+            if not (path / rel).exists():
+                git(path, "ls-files", "--error-unmatch", "--", str(rel))  # a deletion is a valid change
             chosen.append(str(rel))
         staged = set(git(path, "diff", "--cached", "--name-only", "-z").split("\0")) - {""}
         if staged - set(chosen):
