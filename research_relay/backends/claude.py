@@ -52,7 +52,7 @@ def warnings(repo, policy):
         return []
     if current.get("autoCompactEnabled") is False:
         return [f"{HOOKS_FILE} sets autoCompactEnabled: false; remove it to let Claude Code compact "
-                "in trajectory mode."]
+                "in rhizome mode."]
     return []
 
 

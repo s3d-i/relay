@@ -8,7 +8,7 @@ from . import context
 from .state import RelayError, read_json, runtime_dir, write_json
 
 
-MODES = ("trajectory", "autoresearch")
+MODES = ("rhizome", "autoresearch")
 
 
 def locate(cwd):
@@ -31,7 +31,7 @@ def mode(policy):
     return value
 
 
-def enable(runtime, mode="trajectory", agent=None, window=None, warn_fraction=None, reserve=None,
+def enable(runtime, mode="rhizome", agent=None, window=None, warn_fraction=None, reserve=None,
            compact_limit=None, checkpoint_fraction=None):
     if mode not in MODES:
         raise RelayError(f"--mode must be one of {', '.join(MODES)}.")

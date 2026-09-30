@@ -3,7 +3,7 @@
 import copy
 import os
 
-from . import autoresearch, context, policy, trajectory
+from . import autoresearch, context, policy, rhizome
 from .state import RelayError, lock
 
 
@@ -14,7 +14,7 @@ def handle(payload, backend):
     except Exception as exc:  # noqa: BLE001  the runner needs one JSON object whatever broke
         message = f"research-relay hook failed: {exc}"
         if event == "PreCompact":
-            # Fail closed on compaction only. A policy read as trajectory has already answered by now.
+            # Fail closed on compaction only. A policy read as rhizome has already answered by now.
             return backend.block_compaction(message)
         return {"systemMessage": message}
 
@@ -58,7 +58,7 @@ def _pre_tool_use(payload, backend):
 
 
 def _main_thread(payload, backend, event, active, auto, state):
-    mode = "autoresearch" if auto else "trajectory"
+    mode = "autoresearch" if auto else "rhizome"
     told, current = state.get("told"), {"mode": mode, "since": active.get("since")}
     state["told"] = current
     if event == "SessionStart":
@@ -66,24 +66,24 @@ def _main_thread(payload, backend, event, active, auto, state):
         if source in ("compact", "clear"):
             context.replaced(state)
         if source == "compact":
-            return [trajectory.COMPACTED] + ([autoresearch.COMPACTED] if auto else [])
+            return [rhizome.COMPACTED] + ([autoresearch.COMPACTED] if auto else [])
         return _session_text(backend, active, auto)
     parts = []
     if told != current:
         # The policy changed under an open session, or relay was switched on after it started.
-        parts = [trajectory.changed(mode, told)] + _session_text(backend, active, auto)
+        parts = [rhizome.changed(mode, told)] + _session_text(backend, active, auto)
     if event == "UserPromptSubmit":
         if not state.get("feedback_emitted"):
             state["feedback_emitted"] = True
-            parts.append(trajectory.FEEDBACK)
+            parts.append(rhizome.FEEDBACK)
         return parts
     return parts + _reminder(payload, backend, active, auto, state)
 
 
 def _session_text(backend, active, auto):
-    parts = [trajectory.SESSION]
+    parts = [rhizome.SESSION]
     if not (active.get("context_window") or backend.REPORTS_WINDOW):
-        parts.append(trajectory.UNMONITORED)
+        parts.append(rhizome.UNMONITORED)
     if auto:
         parts.append(autoresearch.SESSION)
     return parts
@@ -101,10 +101,10 @@ def _reminder(payload, backend, active, auto, state):
     state["last_usage"] = {**usage, **limits}
     if not result:
         return []
-    final = trajectory.final(usage["used"], limits["ceiling"])
+    final = rhizome.final(usage["used"], limits["ceiling"])
     if auto and usage["used"] >= limits["final"]:
         return [autoresearch.closeout(final)]  # every reminder past the threshold is the closeout
-    return [final if result[0] == "final" else trajectory.checkpoint(result[1])]
+    return [final if result[0] == "final" else rhizome.checkpoint(result[1])]
 
 
 def _context(event, text):

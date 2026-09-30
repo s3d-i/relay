@@ -1,4 +1,4 @@
-"""The optional mode: compaction blocked, fresh-context subagents, closeout at the final reminder."""
+"""The optional mode on top of the rhizome: compaction blocked, fresh-context subagents, closeout at the final reminder."""
 
 SESSION = (
     "This repository is in auto-research mode. Compaction is blocked by hook, every subagent must start "
@@ -11,8 +11,8 @@ SESSION = (
 CLOSEOUT_BEFORE = (
     "Begin closeout. Open no new directions and start no new workers. Finish the current operation at a "
     "safe boundary, collect completed or partial worker results, and stop the remaining workers. Verify "
-    "that they stopped writing and report anything you cannot confirm. Then preserve the trajectory, "
-    "including those results."
+    "that they stopped writing and report anything you cannot confirm. Then bring the notes up to "
+    "date, including those results."
 )
 
 CLOSEOUT_AFTER = (
@@ -26,9 +26,9 @@ COMPACTED = (
 )
 
 PRECOMPACT = (
-    "research-relay blocks compaction in auto-research mode. Close out instead: preserve the trajectory, "
-    "stop workers, end the turn; the human opens a fresh session that reads the notes. "
-    "relay on --mode trajectory allows compaction."
+    "research-relay blocks compaction in auto-research mode. Close out instead: stop workers, bring "
+    "the notes up to date, end the turn; the human opens a fresh session that reads the notes. "
+    "relay on --mode rhizome allows compaction."
 )
 
 FRESH_CONTEXT_DENIED = "research-relay: every subagent must start with fresh context. {fix}"

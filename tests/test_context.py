@@ -65,9 +65,9 @@ class ObserveTests(unittest.TestCase):
 
     def test_replaced_context_starts_over(self):
         _, state = self.run_trace([800_000])
-        state.update(last_usage={"used": 800_000}, told={"mode": "trajectory"})
+        state.update(last_usage={"used": 800_000}, told={"mode": "rhizome"})
         context.replaced(state)
-        self.assertEqual(state, {"told": {"mode": "trajectory"}})
+        self.assertEqual(state, {"told": {"mode": "rhizome"}})
         # A compaction that lands just under the threshold still gets its own final reminder.
         self.assertEqual(self.run_trace([700_000, 750_000], state)[0], [None, ("final", 750_000)])
 

@@ -1,15 +1,31 @@
 # relay
 
-relay keeps a research trajectory durable across agent sessions. It is a small Python tool
-(3.10+, stdlib only) that hooks into Claude Code or Codex Desktop and keeps research notes on
-a separate Git branch. It is a personal tool, not a release.
+relay keeps the notes of an open research problem as a rhizome, and keeps agent sessions
+feeding it. It is a small Python tool (3.10+, stdlib only) that hooks into Claude Code or
+Codex Desktop and keeps the notes on a separate Git branch. It is a personal tool, not a
+release.
+
+## The rhizome
+
+relay is for open problems with many subproblems, where understanding advances in pieces: an
+observation, a hypothesis, a proposition, a human decision, a shift of focus. Such work does
+not fit a log of what happened or a tree of documents. relay borrows Deleuze and Guattari's
+rhizome instead: things of any kind connected in any direction, with many ways in and no
+centre.
+
+| Rhizome | In relay |
+|---|---|
+| Any point connects to any other, whatever its kind. | A material links directly to whatever it bears on: an observation to a hypothesis, a human decision to a failed run, a note to a commit. There are no document kinds and no fixed relation vocabulary. |
+| No single right reading. | Views read the same materials along one axis (formulation or implementation, training or inference, a use case) and own nothing. A reader composes what the question at hand needs. |
+| A map, not a tracing. | `RESEARCH.md` is a map to enter by: vision, position, problem map, current movement, views. It keeps no change log and no session summaries. |
+| Broken at one spot, it starts up again from another. | A session ends, a context is compacted, a route is abandoned. A fresh agent enters at `RESEARCH.md`, chooses what to read, and continues. That restart is the relay. |
 
 It has a core and an optional mode:
 
-- **Trajectory (the core).** A `<user>/relay-notes` branch in its own worktree holds
+- **Rhizome (the core).** A `<user>/relay-notes` branch in its own worktree holds
   `RESEARCH.md` (the entry point), linked materials, and Git-ignored private human inputs.
   Hooks turn moments in a session (start, first prompt, context growth, compaction) into
-  prompts to read or update those notes. Nothing is blocked.
+  prompts to enter the notes or to connect what is new into them. Nothing is blocked.
 - **Auto-research (a mode on top).** A session discipline for long unattended work: compaction
   is blocked, subagents must start with fresh context, the main thread delegates and waits for
   the human, and the final context reminder is a closeout that ends the session before the
@@ -22,7 +38,7 @@ Every hook call reads it. If the policy is absent or `active: false`, the hook r
 the agent behaves as usual. Per-session state (what the session was told, last usage, reminder
 state) sits next to it.
 
-| Event | Trajectory | Auto-research adds | Enforced? |
+| Event | Rhizome | Auto-research adds | Enforced? |
 |---|---|---|---|
 | SessionStart | Injects where the notes are and that reminders will come. After `compact`: how to recover from the notes. `compact` and `clear` restart the reminder state. | The mode's rules. After `compact`: it should have been blocked; tell the human and close out. | Injection by hook; acting on it is instruction-only |
 | UserPromptSubmit | First prompt of a session: the human-feedback provenance guidance. | | Instruction-only |
@@ -83,7 +99,7 @@ hooks it did not write. `--print` only prints the hooks JSON. `--uninstall` remo
 the hooks file, ignore rules, notes and policy stay.
 
 `on` replaces the policy: omitted options return to their defaults, and a bare `on` means
-`--mode trajectory`. It takes `--mode`, `--agent`, `--window N`, `--compact-limit N`,
+`--mode rhizome`. It takes `--mode`, `--agent`, `--window N`, `--compact-limit N`,
 `--warn-fraction F`, `--reserve N`, `--checkpoint-fraction F`, and prints `previous_mode` when
 the mode changed. `--mode autoresearch` needs `--agent`, and `--window` with `--agent claude`:
 a mode that blocks compaction must be able to deliver its closeout. A policy file written
@@ -106,7 +122,7 @@ reference docs.
 - Pass `--window`; Claude Code does not report it.
 - Upgrading from an older relay: `install` used to write `"autoCompactEnabled": false` into
   that file. relay no longer writes or removes it; `status` warns while it is there. Delete it
-  to let Claude Code compact in trajectory mode.
+  to let Claude Code compact in rhizome mode.
 - Details: [references/claude-code.md](skills/research-relay/references/claude-code.md).
 
 ### Codex Desktop, pinned ChatGPT.app 26.924.22138 (bundled codex-cli 0.158.0-alpha.2.1)

@@ -39,7 +39,7 @@ payloads, so the policy supplies it. Without it there are no context reminders, 
 
 Older relay versions wrote `"autoCompactEnabled": false` into `settings.local.json`. relay no
 longer writes or requires it and does not remove it; `relay status` warns while it is there.
-Delete the key to let Claude Code compact in trajectory mode.
+Delete the key to let Claude Code compact in rhizome mode.
 
 ## Verified facts (2.1.285)
 

@@ -22,8 +22,8 @@ def parser():
     q.add_argument("--print", action="store_true", help="print the hooks JSON instead of installing")
     q = sub.add_parser("on", help="activate the policy for this repository")
     q.add_argument("--repo", default=".")
-    q.add_argument("--mode", choices=policy.MODES, default="trajectory",
-                   help="trajectory: reminders only (default); autoresearch: also block compaction and "
+    q.add_argument("--mode", choices=policy.MODES, default="rhizome",
+                   help="rhizome: reminders only (default); autoresearch: also block compaction and "
                         "inherited-context subagents, and close out at the final reminder")
     q.add_argument("--agent", **agent)
     q.add_argument("--window", type=int, help="context window in tokens (default: what the transcript reports)")

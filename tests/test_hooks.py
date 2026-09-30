@@ -41,7 +41,7 @@ WINDOW, RESERVE, FINAL, STEP = 100000, 10000, 75000, 20000
 class HookCase(RepoCase):
     def setUp(self):
         super().setUp()
-        self.on("trajectory")
+        self.on("rhizome")
         self.transcript = self.repo.parent / "transcript.jsonl"
 
     def on(self, mode, **kw):
@@ -64,7 +64,7 @@ class HookCase(RepoCase):
 
 
 class HookTests(HookCase):
-    def test_precompact_allowed_in_trajectory_blocked_in_autoresearch(self):
+    def test_precompact_allowed_in_rhizome_blocked_in_autoresearch(self):
         for backend in (codex, claude):
             self.assertEqual(self.hook(backend, "PreCompact", trigger="auto"), {})
         self.on("autoresearch")
@@ -96,7 +96,7 @@ class HookTests(HookCase):
             self.assertEqual(self.hook(backend, "UserPromptSubmit"), {})
         self.assertFalse((self.runtime / "sessions").exists())
 
-    def test_trajectory_reminders(self):
+    def test_rhizome_reminders(self):
         for name, (backend, lines) in CASES.items():
             with self.subTest(agent=name):
                 self.start(backend, name)
@@ -161,7 +161,7 @@ class HookTests(HookCase):
         self.start(claude, "s1")
         self.assertEqual(self.hook(claude, "PostToolUse", transcript_path=None), {})
         self.assertEqual(self.hook(claude, "PostToolUse", transcript_path=str(self.repo / "absent.jsonl")), {})
-        policy.enable(self.runtime)  # a bare `on`: trajectory mode, no window
+        policy.enable(self.runtime)  # a bare `on`: rhizome mode, no window
         self.write(claude_lines(FINAL))
         told = self.start(claude, "s2")
         self.assertIn("cannot monitor context usage", told)
@@ -193,7 +193,7 @@ class HookTests(HookCase):
     def test_open_session_is_told_when_the_policy_changes(self):
         # A session that was open before relay was switched on gets the session text at its next event.
         late = self.text(codex, "UserPromptSubmit", session_id="late")
-        self.assertTrue(late.startswith("research-relay: this repository is now in trajectory mode."))
+        self.assertTrue(late.startswith("research-relay: this repository is now in rhizome mode."))
         self.assertNotIn("no longer apply", late)
         self.assertIn("RESEARCH.md", late)
         self.assertIn("provenance", late)
@@ -205,9 +205,9 @@ class HookTests(HookCase):
         self.assertIn("now in auto-research mode", text)
         self.assertIn("Compaction is blocked by hook", text)
         self.assertEqual(self.hook(claude, "PostToolUse"), {})
-        self.on("trajectory")
+        self.on("rhizome")
         text = self.text(claude, "PostToolUse")
-        self.assertIn("now in trajectory mode. The auto-research restrictions no longer apply", text)
+        self.assertIn("now in rhizome mode. The auto-research restrictions no longer apply", text)
         self.assertNotIn("Compaction is blocked by hook", text)
 
     def test_pretooluse_denies_inherited_context_only_in_autoresearch(self):

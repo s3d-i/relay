@@ -14,7 +14,7 @@ SKILL_DIR = ".agents/skills"
 HOOKS_FILE = ".codex/hooks.json"
 REPORTS_WINDOW = True  # the rollout carries model_context_window
 TRUST = "Open the project in Codex and trust the hooks with /hooks; untrusted hooks never run."
-DESCRIPTION = ("research-relay: research trajectory reminders; optional auto-research mode "
+DESCRIPTION = ("research-relay: reminders that keep the research notes connected; optional auto-research mode "
                "(no compaction, fresh-context subagents, closeout).")
 
 

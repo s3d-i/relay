@@ -14,7 +14,7 @@ class PolicyTests(RepoCase):
         code, value = self.cli("on", "--repo", self.repo, "--agent", "claude", "--window", 150000)
         self.assertEqual(code, 0)
         self.assertEqual((value["active"], value["mode"], value["agent"], value["context_window"]),
-                         (True, "trajectory", "claude", 150000))
+                         (True, "rhizome", "claude", 150000))
         self.assertEqual((value["warn_fraction"], value["reserve"], value["checkpoint_fraction"]),
                          (0.75, 100000, 0.2))
         self.assertNotIn("previous_mode", value)
@@ -22,7 +22,7 @@ class PolicyTests(RepoCase):
         self.assertEqual(stored["version"], 2)
         self.assertNotIn("warnings", stored)
         code, value = self.cli("status", "--repo", self.repo)
-        self.assertEqual((code, value["active"], value["mode"], value["warnings"]), (0, True, "trajectory", []))
+        self.assertEqual((code, value["active"], value["mode"], value["warnings"]), (0, True, "rhizome", []))
         self.assertEqual(set(value["hooks"]), {"codex", "claude"})
         self.assertFalse(value["hooks"]["claude"]["installed"])
         self.assertIsNone(value["notes"]["notes"])
@@ -32,18 +32,18 @@ class PolicyTests(RepoCase):
         self.assertEqual((code, value["active"], value["mode"]), (2, False, None))
         self.assertFalse(value["policy"]["active"])
 
-    def test_bare_on_is_trajectory_and_a_mode_change_is_printed(self):
+    def test_bare_on_is_rhizome_and_a_mode_change_is_printed(self):
         code, value = self.cli("on", "--repo", self.repo)
-        self.assertEqual((code, value["mode"], value["agent"], value["context_window"]), (0, "trajectory", None, None))
+        self.assertEqual((code, value["mode"], value["agent"], value["context_window"]), (0, "rhizome", None, None))
         code, value = self.cli("on", "--repo", self.repo, "--mode", "autoresearch", "--agent", "codex")
-        self.assertEqual((code, value["mode"], value["previous_mode"]), (0, "autoresearch", "trajectory"))
+        self.assertEqual((code, value["mode"], value["previous_mode"]), (0, "autoresearch", "rhizome"))
         self.assertIn("compaction ceiling", value["warnings"][0])
         code, value = self.cli("on", "--repo", self.repo, "--mode", "autoresearch", "--agent", "codex",
                                "--compact-limit", 600000)
         self.assertEqual((code, value["warnings"]), (0, []))
         self.assertNotIn("previous_mode", value)
         code, value = self.cli("on", "--repo", self.repo)
-        self.assertEqual((value["mode"], value["previous_mode"]), ("trajectory", "autoresearch"))
+        self.assertEqual((value["mode"], value["previous_mode"]), ("rhizome", "autoresearch"))
 
     def test_invalid_options_rejected(self):
         cases = (("--warn-fraction", 0.99), ("--window", 0), ("--compact-limit", -1), ("--reserve", -1),
