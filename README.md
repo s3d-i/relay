@@ -113,10 +113,11 @@ The runtime does not verify the host. Correctness rests on the pinned versions b
 you having trusted the hooks once. If you upgrade either app, re-check the facts in the
 reference docs.
 
-### Claude Code, pinned 2.1.285
+### Claude Code, pinned 2.1.299
 
 - Skill link: `<project>/.claude/skills/research-relay`. Invoke with `/research-relay`.
-- Hooks: merged into `<project>/.claude/settings.local.json`; other keys are kept. No trust prompt.
+- Hooks: merged into `<project>/.claude/settings.local.json`; other keys are kept. No hook trust
+  step beyond Claude Code's workspace trust.
 - Command: `python3 "$CLAUDE_PROJECT_DIR/.claude/skills/research-relay/scripts/relay.py" hook --agent claude`.
   No absolute paths, so the file works on both machines.
 - Pass `--window`; Claude Code does not report it.
@@ -125,7 +126,7 @@ reference docs.
   to let Claude Code compact in rhizome mode.
 - Details: [references/claude-code.md](skills/research-relay/references/claude-code.md).
 
-### Codex Desktop, pinned ChatGPT.app 26.924.22138 (bundled codex-cli 0.158.0-alpha.2.1)
+### Codex Desktop, pinned ChatGPT.app 26.1007.71326 (bundled codex-cli 0.162.0-alpha.17.2)
 
 - Skill link: `<project>/.agents/skills/research-relay`. Invoke with `$research-relay`.
 - Hooks: `<project>/.codex/hooks.json`. Run `install` on the machine that runs Codex; the
@@ -133,6 +134,8 @@ reference docs.
 - Trust the hooks once in the app through `/hooks`. relay does not check trust.
 - Pass `--compact-limit` with Codex's `model_auto_compact_token_limit` when that is below the
   window; relay does not read Codex's configuration and warns while the limit is missing.
+- The `spawn_agent` fork denial does not take effect on this build: Codex names the tool
+  `spawn_agent` in hook input, not `Agent`. See the reference.
 - Details: [references/codex.md](skills/research-relay/references/codex.md).
 
 Then open a fresh chat in the project and invoke the skill ([SKILL.md](skills/research-relay/SKILL.md)):
