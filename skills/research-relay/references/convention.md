@@ -9,12 +9,14 @@ Preserve what helps the next reader understand: the current question, the ground
 | Section | What it answers | What it holds |
 | --- | --- | --- |
 | Vision | What is this work for? | The experiences or capabilities we want to exist, in the human's terms, with the standing constraints. An open problem has a direction, not a finish line, so this is a vision and not a goal. |
-| Position | How far are we toward the vision? | One line per capability the vision asks for: what is implemented and verified today, the kind of evidence, and a link. Work that was tried but not verified is not position. "Nothing verified" and a verified failure are valid lines. |
+| Position | What exists today, and how far is that from the vision? | The system as the trusted code has it. First the baseline: the commit or tag the human accepts as reviewed, and one sentence on what the system does. Then one line per high-level module or component: what it does, where it lives at the baseline, and how it has been checked. Last, the capabilities the vision asks for that the baseline lacks, one line each. |
 | Problem map | What must be understood or solved? | The abstract decomposition, independent of any implementation. One line per node: a stable id, a one-sentence statement, the nodes it needs, a status, and a link to the best current understanding. |
 | Current movement | What is being pushed now? | The nodes in focus, the question asked of each, why now, what result would redirect the work, and any work still running. |
 | Views | How else can the materials be read? | Links to view files, one line each. |
 
-Position and the problem map differ in kind. Position is concrete and measured against the vision: it changes only when something is built and checked. The map is abstract: it would read the same if the current code were thrown away. A node can be settled in understanding while the position line it serves is still empty, and the reverse.
+Position is an architecture overview, not a results log. A reader should come away knowing which parts exist and how they fit, at the level of a module or a model component. Experiments, measurements, variants that were tried, and work on branches the human has not accepted are not position; they live in materials and reach the entry point through the problem map. When a line of work is abandoned, position returns to the baseline and the abandoned work stays behind a link or a tag.
+
+Position and the problem map differ in kind. Position is concrete: it describes the code at the baseline and changes only when the baseline moves or a component in it changes. The map is abstract: it would read the same if the current code were thrown away. A node can be settled in understanding while no component serves it, and the reverse.
 
 The map is a dependency graph. `needs` means a node cannot be settled or evaluated before the node it names. Keep the edges acyclic: when two nodes need each other, either they are one node or their coupling is a node of its own. Statuses are `open` (no supported answer), `held` (a working answer is in use and revisable) and `parked` (set aside; the link says why and what would reopen it). Keep the map to about a dozen nodes. A node that needs its own decomposition gets a sub-map in the material it links to.
 
@@ -39,7 +41,7 @@ Evidence can overturn a scientific judgment; vision, priorities and authorizatio
 | Section | An agent may change alone | Needs human review |
 | --- | --- | --- |
 | Vision | Nothing. It may propose. | Every change. |
-| Position | Add or downgrade a line, with a link to the evidence. | Upgrading a line that rests on human judgment, such as playability or quality; removing a line. |
+| Position | Correct a line so it matches the code at the baseline; add a capability the baseline lacks; downgrade how a component is checked. | Moving the baseline; adding a component from code outside it; a claim that rests on human judgment, such as playability or quality; removing a line. |
 | Problem map | Add a node or an edge; change `open` and `held` with grounds; update links. | Removing, merging or parking a node; removing an edge. |
 | Current movement | Report progress, results and running work inside the chosen focus. | Changing which nodes are in focus. |
 | Views | Everything. | Nothing. |

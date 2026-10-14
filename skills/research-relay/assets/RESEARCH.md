@@ -10,9 +10,13 @@ _Review: agent draft, not yet reviewed._
 
 ## Position
 
-| Capability the vision asks for | Implemented and verified today | Evidence | Grounds |
+Baseline: the commit or tag the human accepts as reviewed, and one sentence on what the system does today.
+
+| Component | What it does | Where | Checked by |
 | --- | --- | --- | --- |
-| One line per capability | What exists, or "nothing verified" | Mechanical check, measurement, agent inspection, human judgment | Link |
+| One line per high-level module | Its role in the system | Path at the baseline | Tests, measurement, agent inspection, human judgment |
+
+Not in the baseline: one line per capability the vision asks for that the code lacks.
 
 _Review: agent draft, not yet reviewed._
 
