@@ -31,9 +31,6 @@ PRECOMPACT = (
     "relay on --mode rhizome allows compaction."
 )
 
-FRESH_CONTEXT_DENIED = "research-relay: every subagent must start with fresh context. {fix}"
-
-
 def closeout(core):
     """Workers are collected before the notes are completed, so the mode wraps the core's text."""
     return "\n\n".join((CLOSEOUT_BEFORE, core, CLOSEOUT_AFTER))

@@ -21,8 +21,10 @@ class InstallTests(RepoCase):
         settings = self.repo / ".claude/settings.local.json"
         settings.parent.mkdir()
         foreign = {"matcher": "Bash", "hooks": [{"type": "command", "command": "echo foreign"}]}
+        # An older relay registered a PreToolUse entry; install drops it and keeps the foreign one.
+        old = {"matcher": "Agent", "hooks": [{"type": "command", "command": claude.hook_command(LAUNCHER)}]}
         settings.write_text(json.dumps({"permissions": {"allow": ["Bash(ls)"]}, "autoCompactEnabled": False,
-                                        "hooks": {"PreToolUse": [foreign]}}))
+                                        "hooks": {"PreToolUse": [foreign, old]}}))
         code, value = self.cli("install", "--repo", self.repo, "--agent", "claude")
         self.assertEqual(code, 0, value)
         self.assertTrue(value["installed"] and value["hooks_changed"])
@@ -31,10 +33,8 @@ class InstallTests(RepoCase):
         # relay no longer writes this key and cannot tell whose it is: kept and reported.
         self.assertIs(after["autoCompactEnabled"], False)
         self.assertIn("autoCompactEnabled", value["warnings"][0])
-        self.assertEqual(after["hooks"]["PreToolUse"][0], foreign)
-        ours = after["hooks"]["PreToolUse"][1]
-        self.assertEqual(ours["matcher"], "Agent")
-        self.assertEqual(ours["hooks"][0]["command"], claude.hook_command(LAUNCHER))
+        self.assertEqual(after["hooks"]["PreToolUse"], [foreign])
+        self.assertEqual(after["hooks"]["PostToolUse"][0]["hooks"][0]["command"], claude.hook_command(LAUNCHER))
         self.assertEqual(set(after["hooks"]), {"SessionStart", "UserPromptSubmit", "PreToolUse",
                                                "PostToolUse", "PreCompact"})
         target = self.repo / ".claude/skills/research-relay"
@@ -54,17 +54,17 @@ class InstallTests(RepoCase):
         hooks_file.parent.mkdir()
         stale = {"hooks": [{"type": "command", "command": "python3 /old/research-relay/scripts/relay.py hook"}]}
         hooks_file.write_text(json.dumps({"description": "research-relay experimental hooks",
-                                          "hooks": {"Stop": [stale], "PreCompact": [stale]}}))
+                                          "hooks": {"Stop": [stale], "PreToolUse": [{"matcher": "Agent", **stale}],
+                                                    "PreCompact": [stale]}}))
         code, value = self.cli("install", "--repo", self.repo, "--agent", "codex")
         self.assertEqual(code, 0, value)
         self.assertIn("/hooks", value["next"])
         written = json.loads(hooks_file.read_text())
         self.assertEqual(written["description"], codex.DESCRIPTION)
         hooks = written["hooks"]
-        self.assertEqual(len(hooks), 5)  # the stale Stop entry from an older relay is gone
-        self.assertNotIn("Stop", hooks)
+        # The stale Stop and PreToolUse entries from an older relay are gone.
+        self.assertEqual(set(hooks), {"SessionStart", "UserPromptSubmit", "PostToolUse", "PreCompact"})
         self.assertEqual(len(hooks["PreCompact"]), 1)
-        self.assertEqual(hooks["PreToolUse"][0]["matcher"], "Agent")
         command = hooks["PreCompact"][0]["hooks"][0]["command"]
         self.assertEqual(command, codex.hook_command(LAUNCHER))
         self.assertIn(str(LAUNCHER), command)

@@ -1,9 +1,8 @@
-"""Claude Code: .claude/settings.local.json, Agent tool subagent_type, transcript message.usage."""
+"""Claude Code: .claude/settings.local.json, transcript message.usage."""
 
 from pathlib import Path
 
 from . import HOOK_EVENTS, hook_map, installed, last_value, merge_hooks
-from ..autoresearch import FRESH_CONTEXT_DENIED
 from ..state import RelayError, read_json, write_json
 
 
@@ -71,10 +70,3 @@ def _usage(item):
     usage = item["message"]["usage"]
     return {"used": sum(int(usage.get(key) or 0) for key in USAGE_KEYS),
             "window": None, "observed_at": item.get("timestamp")}
-
-
-def fresh_context_violation(tool_name, tool_input):
-    if tool_name == "Agent" and tool_input.get("subagent_type") == "fork":
-        return FRESH_CONTEXT_DENIED.format(
-            fix='Do not use subagent_type "fork"; every other Agent call starts a fresh context.')
-    return None

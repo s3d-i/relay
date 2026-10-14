@@ -32,8 +32,6 @@ def _handle(payload, backend, event):
     # Enforcement comes from the mode alone and applies to subagents too.
     if event == "PreCompact":
         return backend.block_compaction(autoresearch.PRECOMPACT) if auto else {}
-    if event == "PreToolUse":
-        return _pre_tool_use(payload, backend) if auto else {}
     if payload.get("agent_id"):
         return {}  # a subagent's event: reminders and session state belong to the main thread
     session_id = payload.get("session_id")
@@ -45,16 +43,6 @@ def _handle(payload, backend, event):
         if state != before:
             policy.save_session(runtime, session_id, state)
     return _context(event, "\n\n".join(parts)) if parts else {}
-
-
-def _pre_tool_use(payload, backend):
-    tool_input = payload.get("tool_input")
-    reason = backend.fresh_context_violation(
-        payload.get("tool_name"), tool_input if isinstance(tool_input, dict) else {})
-    if not reason:
-        return {}
-    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
-                                   "permissionDecisionReason": reason}}
 
 
 def _main_thread(payload, backend, event, active, auto, state):

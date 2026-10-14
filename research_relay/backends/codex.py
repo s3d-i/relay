@@ -1,11 +1,10 @@
-"""Codex Desktop: .codex/hooks.json, spawn_agent fork_turns, rollout token_count records."""
+"""Codex Desktop: .codex/hooks.json, rollout token_count records."""
 
 from pathlib import Path
 import shlex
 import sys
 
 from . import HOOK_EVENTS, hook_map, installed, last_value, merge_hooks
-from ..autoresearch import FRESH_CONTEXT_DENIED
 from ..state import RelayError, read_json, write_json
 
 
@@ -75,10 +74,3 @@ def _usage(item):
     # last_token_usage already includes cached input and reasoning; never sum totals.
     return {"used": int(info["last_token_usage"]["total_tokens"]),
             "window": info.get("model_context_window"), "observed_at": item.get("timestamp")}
-
-
-def fresh_context_violation(tool_name, tool_input):
-    if tool_name == "Agent" and tool_input.get("fork_turns") != "none":
-        return FRESH_CONTEXT_DENIED.format(
-            fix='Call spawn_agent with fork_turns: "none"; omitting it inherits the parent conversation.')
-    return None

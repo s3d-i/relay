@@ -8,7 +8,7 @@ from ..state import RelayError
 
 
 NAMES = ("codex", "claude")
-HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PreCompact")
+HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "PreCompact")
 TIMEOUT = 5
 TAIL = 256 * 1024
 WHOLE = 4 * 1024 * 1024
@@ -21,14 +21,9 @@ def get(name):
 
 
 def hook_map(command):
-    """The hooks fragment both agents accept: matcher only where the event is tool-specific."""
-    value = {}
-    for event in HOOK_EVENTS:
-        entry = {"hooks": [{"type": "command", "command": command, "timeout": TIMEOUT}]}
-        if event == "PreToolUse":
-            entry = {"matcher": "Agent", **entry}
-        value[event] = [entry]
-    return value
+    """The hooks fragment both agents accept."""
+    return {event: [{"hooks": [{"type": "command", "command": command, "timeout": TIMEOUT}]}]
+            for event in HOOK_EVENTS}
 
 
 def ours(entry):

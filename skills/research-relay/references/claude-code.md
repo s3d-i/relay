@@ -28,8 +28,8 @@ python3 "$CLAUDE_PROJECT_DIR/.claude/skills/research-relay/scripts/relay.py" hoo
 ```
 
 `CLAUDE_PROJECT_DIR` is set for hook commands, so the file holds no absolute paths. Timeout
-5 s. Events: SessionStart, UserPromptSubmit, PreToolUse (matcher `Agent`), PostToolUse,
-PreCompact. `install --print` shows the JSON without writing.
+5 s. Events: SessionStart, UserPromptSubmit, PostToolUse, PreCompact.
+`install --print` shows the JSON without writing.
 
 `--window`: Claude Code reports its context window neither in the transcript nor in hook
 payloads (only the status line payload carries it), so the policy supplies it. Without it
@@ -64,7 +64,7 @@ their input.
   enforcement only: no reminder, no session state.
 - `Agent` tool input fields: `prompt`, `description`, `subagent_type`, and optional `model`,
   `effort`, `isolation` and `name`. `subagent_type: "fork"` inherits the conversation;
-  auto-research mode denies it. Any other value, or none, starts a fresh context.
+  any other value, or none, starts a fresh context.
 - SessionStart `source` is one of startup, resume, clear, compact, fork. `additionalContext`
   from SessionStart, UserPromptSubmit and PostToolUse reaches the model; `systemMessage`
   reaches only the human.

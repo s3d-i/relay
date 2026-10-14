@@ -22,8 +22,8 @@ python3 -m research_relay on      --repo /path/to/project --agent codex --compac
 
 The command is `python3 <abs-relay-checkout>/skills/research-relay/scripts/relay.py hook --agent codex`.
 Hooks run with the session cwd and Codex sets no project env var, so the paths are absolute.
-Timeout 5 s. Events: SessionStart, UserPromptSubmit, PreToolUse (matcher `Agent`), PostToolUse,
-PreCompact. `install --print` shows the JSON without writing.
+Timeout 5 s. Events: SessionStart, UserPromptSubmit, PostToolUse, PreCompact.
+`install --print` shows the JSON without writing.
 
 Trust: open the project in the app and trust the hooks once through `/hooks`. relay does not
 check or grant trust. A session opened before the hooks file existed may not have loaded it;
@@ -58,17 +58,10 @@ its rollouts on the Mac.
   text says `fork_turns` defaults to `all`, `none` starts without parent history, and only
   those two are supported. Since 0.162 a positive integer string forks the full history instead
   of that many turns (openai/codex#51329); other values are rejected. `fork_turns` is not in
-  the public docs. Auto-research mode denies everything except `"none"`. V1's `spawn_agent`
-  takes a `fork_context` boolean instead; V2 rejects it.
-- Hook input names the tool `spawn_agent`; `Agent` is only a matcher alias, and only for
-  `spawn_agent` in the default or `multi_agent_v1` namespace (`core/src/tools/registry.rs`,
-  unchanged from 0.158.0-alpha.2.1 to 0.162.1). The pinned build's rollouts put V2
-  `spawn_agent` in the `collaboration` namespace, whose hook name joins namespace and name and
-  has no alias. relay's `Agent` matcher and its `tool_name == "Agent"` check therefore miss
-  Codex spawns: the fork denial does not take effect.
-- Worker events carry the parent `session_id`. The pinned build's PreToolUse, PostToolUse,
-  PreCompact and UserPromptSubmit input schemas include an optional `agent_id`; relay gives an
-  event with `agent_id` enforcement only.
+  the public docs. V1's `spawn_agent` takes a `fork_context` boolean instead; V2 rejects it.
+- Worker events carry the parent `session_id`. The pinned build's PostToolUse, PreCompact and
+  UserPromptSubmit input schemas include an optional `agent_id`; relay gives an event with
+  `agent_id` enforcement only.
 - The SessionStart input schema accepts `source` startup, resume, clear, compact and fork. The
   docs say the `compact` event runs before the next model request after a root compaction.
 

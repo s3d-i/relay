@@ -12,7 +12,7 @@ Preserve what helps the next reader understand: the current question, the ground
 | Position | What exists today, and how far is that from the vision? | The system as the trusted code has it. First the baseline: the commit or tag the human accepts as reviewed, and one sentence on what the system does. Then one line per high-level module or component: what it does, where it lives at the baseline, and how it has been checked. Last, the capabilities the vision asks for that the baseline lacks, one line each. |
 | Problem map | What must be understood or solved? | The abstract decomposition, independent of any implementation. One line per node: a stable id, a one-sentence statement, the nodes it needs, a status, and a link to the best current understanding. |
 | Current movement | What is being pushed now? | The nodes in focus, the question asked of each, why now, what result would redirect the work, and any work still running. |
-| Views | How else can the materials be read? | Links to view files, one line each. |
+| Open for the human | What waits on the human? | One line per question that could not be decided yet: the date recorded, the question, what would make it decidable, and a link. |
 
 Position is an architecture overview, not a results log. A reader should come away knowing which parts exist and how they fit, at the level of a module or a model component. Experiments, measurements, variants that were tried, and work on branches the human has not accepted are not position; they live in materials and reach the entry point through the problem map. When a line of work is abandoned, position returns to the baseline and the abandoned work stays behind a link or a tag.
 
@@ -24,29 +24,17 @@ The map is a dependency graph. `needs` means a node cannot be settled or evaluat
 
 The entry point holds what a reader needs to choose where to go: claims in one line, statuses, ids and links. Grounds live behind the links: numbers, run and checkpoint identities, narratives, variants and their tradeoffs, history, and anything about human wording. Two tests help. If a line needs evidence to be believed, the entry point states the claim and links the grounds. If removing a sentence would not change where a reader goes next, it belongs in a material.
 
-Rewrite sections in place as understanding changes. The entry point keeps no change log and no session summaries: Git history of `RESEARCH.md` records what changed, and a material records why an earlier account was superseded. Aim for a file that reads in a few minutes.
+The entry point keeps no change log and no session summaries, and adding to it prunes something. Aim for a file that reads in a few minutes.
 
 ### Anchors
 
 Give a stable anchor to each statement other materials will need to cite: a problem-map node, an observation, a hypothesis, a decision. Write it as `<a id="..."></a>` before the statement, since heading text changes and explicit ids do not. Ids are lowercase kebab-case, never reused and never renamed; when a claim is superseded, keep its anchor and say what replaced it. Lead an anchored claim with what it is, how it stands and when that was judged, for example `**Hypothesis, open, 2026-09-29.**`. The words are free; no fixed vocabulary of kinds or statuses applies outside the problem map. Cite claims by anchor, not by file, so a reader lands on the statement and its grounds.
 
-### Views
+### Decisions
 
-A view is a thin file that reads the same materials along one axis: formulation versus implementation, training versus inference, a use case, the history of the path. It lists links, each with a line saying why that source matters on this axis. A view owns nothing: a material may appear in many views, views may overlap, and a view made for one question can be deleted when the question passes. Add a view when readers keep assembling the same slice by hand. Views are not a taxonomy, and a material needs no view to be valid.
+Vision, the baseline and the focus change only on the human's decision. Agents settle what the human's stated principles already settle. Everything else is put to the human as a question in the harness when it arises: a few at a time, only questions the human can decide from what is shown, each with a recommendation. The answer is recorded as a decision with its private citation, per [human feedback](#human-feedback).
 
-### Review
-
-Evidence can overturn a scientific judgment; vision, priorities and authorization belong to the human. Each entry-point section therefore has its own rule for what an agent may change alone.
-
-| Section | An agent may change alone | Needs human review |
-| --- | --- | --- |
-| Vision | Nothing. It may propose. | Every change. |
-| Position | Correct a line so it matches the code at the baseline; add a capability the baseline lacks; downgrade how a component is checked. | Moving the baseline; adding a component from code outside it; a claim that rests on human judgment, such as playability or quality; removing a line. |
-| Problem map | Add a node or an edge; change `open` and `held` with grounds; update links. | Removing, merging or parking a node; removing an edge. |
-| Current movement | Report progress, results and running work inside the chosen focus. | Changing which nodes are in focus. |
-| Views | Everything. | Nothing. |
-
-Every section except Views ends with a review line: the date of the last human review and a "private, local" link to the human's raw comment, or a statement that the section is an agent draft. Review is something the human said about that section in a session, recorded per [human feedback](#human-feedback); silence, a commit and a passing check are not review. A change that needs review and has none is written as a proposal, marked `(proposed)` at the change, and named in the review line. It stays marked until the human responds. Proposals may be committed; they may not be acted on as decisions. List pending proposals in the closeout report.
+A question the human cannot decide yet gets a line under Open for the human. An agent brings it back no sooner than one day after its date, as a harness question that also offers "move to the undecided bank". Moving it deletes the line from the entry point and appends it, with its date, to `artifacts/undecided.md`.
 
 ## Connections
 
@@ -58,7 +46,7 @@ Connect related materials directly when useful, without adding edges just to fil
 
 The query currently extracts ordinary single-line inline/reference Markdown links from the notes worktree. It skips private and ignored sources and does not parse every Markdown extension. The main agent can read necessary private originals directly through their source citations. An omitted edge does not establish that no relationship exists. Reading may also uncover a connection not yet written down: when it changes understanding or opens a worthwhile question, explain its basis and preserve the connection without first inventing a relation type.
 
-Retain important earlier explanations and the reasons they were superseded in relevant materials. New materials may require changing the map or abandoning a route. Do not remove disagreement to keep the entry point tidy.
+New materials may require changing the map or abandoning a route. Do not remove disagreement to keep the entry point tidy.
 
 ## Materials and evidence
 
@@ -68,7 +56,11 @@ Make it possible to return to the grounds. As the question requires, identify ex
 
 Resolve relative links from the file containing them. Notes and code live in different worktrees. Cite committed code and documents as `<commit>:<path>`, which `git show` resolves in any clone, or by a path in a named checkout together with the commit. Checkpoints, receipts and other local results live on one machine: cite them by their absolute path there and name the machine, so the citation points at the artifact itself. A reader on another machine then knows where the evidence is and that it is not at hand. Anchors can locate passages; check affected citations when moving files or rewriting sections. When a source needed for the current question is unavailable, explain which judgment that limits. Repository-wide link repair is not a prerequisite for research.
 
-Distinguish observations, interpretations, and decisions, as well as absent evidence, contrary evidence, and confirmation. Mark sources that have not been checked. Revise judgments when their applicable code, data, or conditions change. Original results stay unchanged when explanations change; preserve the grounds and date of important analytical revisions. When deferring a route, explain why and what new evidence would make it worth revisiting.
+Distinguish observations, interpretations, and decisions, as well as absent evidence, contrary evidence, and confirmation. Mark sources that have not been checked. Revise judgments when their applicable code, data, or conditions change. Original results stay unchanged when explanations change. When deferring a route, explain why and what new evidence would make it worth revisiting.
+
+## Clean notes
+
+A changed judgment replaces the old text in place; Git keeps history, so keep no archive copies of old entry points or plan versions. When a question closes, its material shrinks to the result and its grounds, and the logs, handoffs and status that served the work are deleted. Operations (PRs, merges, cleanups, branch deletions) are not notes. Commit when a judgment changes, with a message that says what changed. Frequent commits are fine if each is clean.
 
 ## Human feedback
 

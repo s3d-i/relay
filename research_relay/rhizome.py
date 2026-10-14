@@ -15,7 +15,8 @@ SESSION = (
     "research-relay skill ($research-relay) says how. If there are no notes yet, follow the skill's "
     "initialization guidance. As you work, connect what is new (observations, results, hypotheses, "
     "decisions, changes of direction) to the materials it supports, contradicts or reopens; context "
-    "reminders will prompt a check."
+    "reminders will prompt a check. Bring each item under Open for the human in RESEARCH.md dated a day "
+    "or more ago back to the human as a question that also offers to move it to the undecided bank."
 )
 
 UNMONITORED = (
@@ -38,8 +39,8 @@ CHECKPOINT = (
     "research-relay checkpoint: context has grown by about {grown} tokens since the last reminder. "
     "Check for consequential observations, results, hypotheses, decisions or changes of direction that "
     "the notes do not yet hold. Write each where it bears on a judgment and link it to what it supports, "
-    "contradicts or reopens; update only the affected entry-point lines, within the review rules. "
-    "Commit changed shareable files only after reviewing their diffs and where workspace rules permit. "
+    "contradicts or reopens; update only the affected entry-point lines, in place. Commit changed "
+    "shareable files only after reviewing their diffs and where workspace rules permit. "
     "If nothing consequential is missing, continue without writing a summary or making a commit."
 )
 
@@ -47,9 +48,8 @@ FINAL = (
     "research-relay: last observed context usage is {used} of {ceiling} tokens, past the final reminder "
     "threshold. Leave the notes so that a fresh reader can enter and continue: connect consequential "
     "understanding that is not yet durable, including links to existing evidence and to unfinished "
-    "work, and update the affected entry-point sections within the review rules; keep proposals marked. "
-    "Check the ongoing record; do not reconstruct the whole investigation or write a session summary. "
-    "Later context may be compacted."
+    "work, and update the affected entry-point sections in place. Check the ongoing record; do not "
+    "reconstruct the whole investigation or write a session summary. Later context may be compacted."
 )
 
 COMPACTED = (

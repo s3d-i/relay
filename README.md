@@ -16,8 +16,8 @@ centre.
 | Rhizome | In relay |
 |---|---|
 | Any point connects to any other, whatever its kind. | A material links directly to whatever it bears on: an observation to a hypothesis, a human decision to a failed run, a note to a commit. There are no document kinds and no fixed relation vocabulary. |
-| No single right reading. | Views read the same materials along one axis (formulation or implementation, training or inference, a use case) and own nothing. A reader composes what the question at hand needs. |
-| A map, not a tracing. | `RESEARCH.md` is a map to enter by: vision, position, problem map, current movement, views. It keeps no change log and no session summaries. |
+| No single right reading. | A reader follows the links the question at hand needs and composes their own reading. |
+| A map, not a tracing. | `RESEARCH.md` is a map to enter by: vision, position, problem map, current movement, open for the human. It keeps no change log and no session summaries. |
 | Broken at one spot, it starts up again from another. | A session ends, a context is compacted, a route is abandoned. A fresh agent enters at `RESEARCH.md`, chooses what to read, and continues. That restart is the relay. |
 
 It has a core and an optional mode:
@@ -40,14 +40,13 @@ state) sits next to it.
 
 | Event | Rhizome | Auto-research adds | Enforced? |
 |---|---|---|---|
-| SessionStart | Injects where the notes are and that reminders will come. After `compact`: how to recover from the notes. `compact` and `clear` restart the reminder state. | The mode's rules. After `compact`: it should have been blocked; tell the human and close out. | Injection by hook; acting on it is instruction-only |
+| SessionStart | Injects where the notes are, that reminders will come, and a prompt to bring back items open for the human for a day or more. After `compact`: how to recover from the notes. `compact` and `clear` restart the reminder state. | The mode's rules. After `compact`: it should have been blocked; tell the human and close out. | Injection by hook; acting on it is instruction-only |
 | UserPromptSubmit | First prompt of a session: the human-feedback provenance guidance. | | Instruction-only |
 | PostToolUse | Reads the tail of the transcript (last 256 KiB) for context usage and injects a checkpoint or the final reminder. | At or past the final threshold the reminder is the closeout: collect and stop workers, preserve the notes, end the turn. | Delivery by hook; acting on it is instruction-only |
-| PreToolUse, matcher `Agent` | | Denies a spawn that would inherit the conversation (Claude Code: `subagent_type: "fork"`; Codex: `fork_turns` other than `"none"`). | Hook |
 | PreCompact | | Blocks compaction, manual or automatic, also in subagents. Fails closed: an unreadable policy or an internal error still blocks. | Hook |
 
-An event that comes from a subagent (its payload carries `agent_id`) gets the two enforcement
-rows and nothing else: reminders and session state belong to the main thread. A session that
+An event that comes from a subagent (its payload carries `agent_id`) gets the compaction block
+and nothing else: reminders and session state belong to the main thread. A session that
 was already open when the policy was switched on or changed is told at its next prompt or tool
 call.
 
@@ -94,8 +93,9 @@ relay off     --repo /path/to/project
 ```
 
 `install` symlinks the skill into the project, adds `.gitignore` rules for the symlink, the
-hooks file and `/artifacts/private/`, and writes or merges the hooks file. It never removes
-hooks it did not write. `--print` only prints the hooks JSON. `--uninstall` removes the link only;
+hooks file and `/artifacts/private/`, and writes or merges the hooks file. It replaces relay's
+earlier entries, including those for events it no longer uses, and never removes hooks it did
+not write. `--print` only prints the hooks JSON. `--uninstall` removes the link only;
 the hooks file, ignore rules, notes and policy stay.
 
 `on` replaces the policy: omitted options return to their defaults, and a bare `on` means
@@ -134,8 +134,6 @@ reference docs.
 - Trust the hooks once in the app through `/hooks`. relay does not check trust.
 - Pass `--compact-limit` with Codex's `model_auto_compact_token_limit` when that is below the
   window; relay does not read Codex's configuration and warns while the limit is missing.
-- The `spawn_agent` fork denial does not take effect on this build: Codex names the tool
-  `spawn_agent` in hook input, not `Agent`. See the reference.
 - Details: [references/codex.md](skills/research-relay/references/codex.md).
 
 Then open a fresh chat in the project and invoke the skill ([SKILL.md](skills/research-relay/SKILL.md)):
@@ -172,9 +170,9 @@ and which grounds deserve another look. Conventions: [convention.md](skills/rese
 
 ## Limits
 
-- Enforced by hooks, in auto-research mode only: the compaction block and the fresh-context
-  deny. Delivered by hooks: the reminders. Instruction-only: keeping the notes current,
-  delegation discipline, provenance rules, and acting on a reminder.
+- Enforced by hooks, in auto-research mode only: the compaction block. Delivered by hooks: the
+  reminders. Instruction-only: keeping the notes current, delegation discipline (fresh-context
+  workers included), provenance rules, and acting on a reminder.
 - Usage is read at hook boundaries. A reminder arrives at the first PostToolUse after its
   threshold, not mid-thought; a long tool-free stretch gets none. On Codex the reading can lag
   by one model request.

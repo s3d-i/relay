@@ -210,27 +210,6 @@ class HookTests(HookCase):
         self.assertIn("now in rhizome mode. The auto-research restrictions no longer apply", text)
         self.assertNotIn("Compaction is blocked by hook", text)
 
-    def test_pretooluse_denies_inherited_context_only_in_autoresearch(self):
-        denied = [(claude, "Agent", {"subagent_type": "fork", "prompt": "x"}),
-                  (codex, "Agent", {"prompt": "x"}),
-                  (codex, "Agent", {"fork_turns": "all", "prompt": "x"})]
-        allowed = [(claude, "Agent", {"subagent_type": "Explore", "prompt": "x"}),
-                   (claude, "Agent", {"prompt": "x"}), (claude, "Bash", {"command": "ls"}),
-                   (codex, "Agent", {"fork_turns": "none", "prompt": "x"}), (codex, "Shell", {})]
-        for backend, tool, tool_input in denied + allowed:
-            self.assertEqual(self.hook(backend, "PreToolUse", tool_name=tool, tool_input=tool_input), {})
-        self.on("autoresearch")
-        for backend, tool, tool_input in denied:
-            with self.subTest(agent=backend.NAME, tool_input=tool_input):
-                out = self.hook(backend, "PreToolUse", tool_name=tool, tool_input=tool_input,
-                                agent_id="worker-1")["hookSpecificOutput"]
-                self.assertEqual(out["hookEventName"], "PreToolUse")
-                self.assertEqual(out["permissionDecision"], "deny")
-                self.assertIn("fresh context", out["permissionDecisionReason"])
-        for backend, tool, tool_input in allowed:
-            with self.subTest(agent=backend.NAME, tool_input=tool_input):
-                self.assertEqual(self.hook(backend, "PreToolUse", tool_name=tool, tool_input=tool_input), {})
-
     def test_session_start_context_per_mode(self):
         text = self.start(claude, "s1")
         self.assertIn("RESEARCH.md", text)
