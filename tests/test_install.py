@@ -1,16 +1,27 @@
 import json
 import subprocess
 import unittest
+from unittest.mock import patch
 
 from base import ROOT, RepoCase
 from research_relay.backends import claude, codex
 from research_relay.install import LAUNCHER
+from research_relay import install
 
 
 SKILL = ROOT / "skills/research-relay"
 
 
 class InstallTests(RepoCase):
+    def test_status_preserves_inaccessible_agent_settings(self):
+        with patch.object(codex, "hooks_installed", side_effect=PermissionError):
+            value = install.hooks_status(self.repo)
+        self.assertIsNone(value["codex"]["installed"])
+        self.assertIn("not readable", value["codex"]["error"])
+        self.assertFalse(value["claude"]["installed"])
+        with patch.object(claude, "warnings", side_effect=PermissionError):
+            self.assertIn("not readable", install.warnings(self.repo)[0])
+
     def is_ignored(self, path):
         result = subprocess.run(["git", "-C", str(self.repo), "check-ignore", "--quiet", "--no-index", "--", path],
                                 capture_output=True, text=True)

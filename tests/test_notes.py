@@ -9,6 +9,31 @@ from research_relay.state import RelayError, git
 
 
 class NotesTests(RepoCase):
+    def test_notes_registration_from_another_namespace(self):
+        path = Path(notes.init(self.repo)["notes"])
+        admin = Path(git(path, "rev-parse", "--absolute-git-dir"))
+        registration = admin / "gitdir"
+        unavailable = "/unavailable-other-host/research-relay/notes/.git\n"
+        registration.write_text(unavailable)
+        self.assertEqual(notes.find(self.repo), path)
+        self.assertEqual(notes.inspect(self.repo)["branch"], "Relay-Test/relay-notes")
+        self.assertEqual(registration.read_text(), unavailable)
+
+    def test_unavailable_notes_registration_is_not_selected(self):
+        path = Path(notes.init(self.repo)["notes"])
+        path.rename(path.with_name("hidden-notes"))
+        self.assertIsNone(notes.find(self.repo))
+
+    def test_local_fallback_must_be_a_notes_checkout_in_same_repository(self):
+        path = self.runtime / "notes"
+        path.mkdir(parents=True)
+        self.assertIsNone(notes.find(self.repo))
+        other = self.repo.parent / "other"
+        other.mkdir()
+        git(other, "init")
+        (path / ".git").write_text("gitdir: " + str(other / ".git") + "\n")
+        self.assertIsNone(notes.find(self.repo))
+
     def test_isolated_branch_preserves_code_and_existing_notes(self):
         (self.repo / "code.txt").write_text("uncommitted code")
         initial = git(self.repo, "status", "--porcelain")

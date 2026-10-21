@@ -95,11 +95,27 @@ def find(repo):
     # -z preserves spaces, newlines and non-ASCII names without Git path quoting.
     raw = git(repo, "worktree", "list", "--porcelain", "-z")
     own, current, found = branch_name(repo), None, {}
+    common = common_dir(repo)
+
+    def accessible(path):
+        try:
+            return path.is_dir() and common_dir(path).samefile(common)
+        except (OSError, RelayError):
+            return False
+
     for field in raw.split("\0"):
         if field.startswith("worktree "):
             current = Path(field[9:])
         elif field.startswith("branch refs/heads/") and is_notes_branch(field[18:]):
-            found[field[18:]] = current
+            if current is not None and accessible(current):
+                found[field[18:]] = current
+    # A shared Git registration can name another host or mount namespace. The
+    # conventional local checkout is usable only when it belongs to this repo.
+    local = runtime_dir(repo) / "notes"
+    if accessible(local):
+        branch = git(local, "branch", "--show-current")
+        if is_notes_branch(branch):
+            found.setdefault(branch, local)
     if own in found or len(found) < 2:
         return found.get(own) or next(iter(found.values()), None)
     raise RelayError("Several notes worktrees and none on this author's branch; choose one: "

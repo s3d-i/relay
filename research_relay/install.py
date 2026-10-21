@@ -68,12 +68,24 @@ def install(repo, agent, uninstall=False):
 
 def warnings(repo, policy=None):
     repo = toplevel(repo)
-    return [text for name in backends.NAMES for text in backends.get(name).warnings(repo, policy)]
+    result = []
+    for name in backends.NAMES:
+        try:
+            result.extend(backends.get(name).warnings(repo, policy))
+        except PermissionError:
+            result.append(f"{name} hook settings are not readable in this environment.")
+    return result
 
 
 def hooks_status(repo):
     repo = toplevel(repo)
-    return {name: {"file": str(backends.get(name).hooks_file(repo)),
-                   "installed": backends.get(name).hooks_installed(
-                       repo, backends.get(name).hook_command(LAUNCHER))}
-            for name in backends.NAMES}
+    result = {}
+    for name in backends.NAMES:
+        backend = backends.get(name)
+        value = {"file": str(backend.hooks_file(repo))}
+        try:
+            value["installed"] = backend.hooks_installed(repo, backend.hook_command(LAUNCHER))
+        except PermissionError:
+            value.update(installed=None, error="Hook settings are not readable in this environment.")
+        result[name] = value
+    return result
