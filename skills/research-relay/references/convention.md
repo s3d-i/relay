@@ -99,7 +99,7 @@ Preserve consequential observations and turns in understanding as they happen. C
 
 For independent training, record task identity, machine/service, directory, outputs, check methods, and whether it may continue. Check a PID together with start time or other identifying details. If subagents were used, preserve results or partial results and verify whether they have stopped. Research understanding should not depend on processes from the previous session staying alive.
 
-Review the files and connections involved in the current work, confirm that private inputs were saved locally, and commit only reviewed shareable files with `notes commit --path ...`. Handoff does not require attaching every material to the entry point, standardizing formats, or cleaning the whole repository. On failure, retain drafts and the index, report their locations, and make them discoverable through status next time. Do not push by default or reset drafts.
+Review the files and connections involved in the current work, confirm that private inputs were saved locally, and commit only reviewed shareable files with `notes commit --path ...`. Handoff does not require attaching every material to the entry point, standardizing formats, or cleaning the whole repository. On failure, retain drafts and the index, report their locations, and make them discoverable through status next time. Push only a notes branch that tracks a private remote, never the notes of a public repository, and do not reset drafts.
 
 Git commits do not back up ignored private files; preserve necessary originals separately before cleaning up a worktree. A handoff should distinguish shareable notes, sources available only locally, work still running, and unfinished judgments.
 

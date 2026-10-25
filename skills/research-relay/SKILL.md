@@ -37,7 +37,7 @@ Follow the [convention](references/convention.md). Record consequential observat
 
 One main session at a time rewrites `RESEARCH.md`. If another session or another machine is working in the same notes, leave your findings as separate materials and say so, instead of editing the entry point concurrently.
 
-To save: `relay notes status --repo <repo>`, review each diff for originals, secrets, large data and unrelated changes, and confirm private files were saved. Then `relay notes commit --repo <repo> --path RESEARCH.md --path artifacts/<file>.md -m "<what changed>"`, where the workspace's rules let this agent commit. Commit when a judgment changes; frequent commits are fine if each is clean. Check the returned commit and `remaining`. No push, no reset. On failure keep drafts and the index and report their paths.
+To save: `relay notes status --repo <repo>`, review each diff for originals, secrets, large data and unrelated changes, and confirm private files were saved. Then `relay notes commit --repo <repo> --path RESEARCH.md --path artifacts/<file>.md -m "<what changed>"`, where the workspace's rules let this agent commit. Commit when a judgment changes; frequent commits are fine if each is clean. Check the returned commit and `remaining`. Push the notes branch only when it tracks a private remote, so another machine can pull it; never push the notes of a public repository. No reset. On failure keep drafts and the index and report their paths.
 
 ## 4. Context reminders
 

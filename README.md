@@ -190,6 +190,7 @@ and which grounds deserve another look. Conventions: [convention.md](skills/rese
   reference docs for what each would change.
 - A hook that is not loaded, not trusted, times out or receives unparseable input enforces
   nothing, the compaction block included. `relay status` checks the file, not the app.
-- Notes are committed to your notes branch, never pushed. Private inputs are not in Git; back them up yourself.
+- relay never pushes. Push the notes branch yourself only to a private remote, to share it between machines;
+  the notes of a public repository stay local. Private inputs are not in Git; back them up yourself.
 
 Development: `python3 -m unittest discover -s tests` and `python3 scripts/check_skill.py`.
