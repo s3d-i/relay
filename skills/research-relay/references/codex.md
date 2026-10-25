@@ -42,7 +42,7 @@ limit counts only growth after the carried prefix.
 
 Checked against https://learn.chatgpt.com/docs/hooks, the openai/codex release notes and source
 for 0.158 to 0.162, the hook schemas and tool text embedded in the pinned build's binary, and
-its rollouts on the Mac.
+its rollouts.
 
 - Hook event names and output shapes match Claude Code's, except PreCompact blocking, which
   uses `{"continue": false, "stopReason": reason, "systemMessage": reason}`.

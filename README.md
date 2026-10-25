@@ -119,7 +119,7 @@ reference docs.
 - Hooks: merged into `<project>/.claude/settings.local.json`; other keys are kept. No hook trust
   step beyond Claude Code's workspace trust.
 - Command: `python3 "$CLAUDE_PROJECT_DIR/.claude/skills/research-relay/scripts/relay.py" hook --agent claude`.
-  No absolute paths, so the file works on both machines.
+  No absolute paths, so the file works on every machine.
 - Pass `--window`; Claude Code does not report it.
 - Upgrading from an older relay: `install` used to write `"autoCompactEnabled": false` into
   that file. relay no longer writes or removes it; `status` warns while it is there. Delete it
