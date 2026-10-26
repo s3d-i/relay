@@ -5,6 +5,8 @@ any direction, and a reader composes what the question at hand needs. The texts 
 agent to enter that way and to connect what is new. Texts only; this layer blocks nothing.
 """
 
+import shlex
+
 MODE_NAMES = {"rhizome": "rhizome", "autoresearch": "auto-research"}
 
 SESSION = (
@@ -92,7 +94,7 @@ RELAXED = (
 
 
 def session(project):
-    return SESSION.format(project=project)
+    return SESSION.format(project=shlex.quote(str(project)))
 
 
 def located(where, project):
@@ -101,11 +103,11 @@ def located(where, project):
         return UNREADABLE.format(error=where["error"])
     if not where.get("reachable"):
         return UNREACHABLE.format(home=where["home"])
-    return LOCATED.format(branch=where["branch"], home=where["home"], project=project)
+    return LOCATED.format(branch=where["branch"], home=where["home"], project=shlex.quote(str(project)))
 
 
 def moved(where, project):
-    return MOVED + " " + (located(where, project) if where else OWN.format(project=project))
+    return MOVED + " " + (located(where, project) if where else OWN.format(project=shlex.quote(str(project))))
 
 
 def checkpoint(grown):

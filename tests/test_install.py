@@ -134,7 +134,8 @@ class InstallTests(RepoCase):
         self.assertEqual(value["hooks"]["codex"], {"file": str(hooks_file), "installed": True, "current": False})
         self.assertEqual(value["hooks"]["claude"]["installed"], False)
         text = " ".join(value["warnings"])
-        self.assertIn("older command; run install --agent codex again", text)
+        self.assertIn("different command than this relay writes", text)
+        self.assertIn("run install --agent codex again", text)
         self.assertIn("installed but relay is off here", text)
         self.cli("install", "--repo", self.repo, "--agent", "codex")
         self.cli("on", "--repo", self.repo, "--agent", "codex", "--compact-limit", 600000)
@@ -150,6 +151,36 @@ class InstallTests(RepoCase):
         self.assertEqual((code, value["other_agents_hooks"]), (0, ["codex"]))
         self.assertIn("left in place", value["skill_kept"])
         self.assertEqual((foreign / "SKILL.md").read_text(), "someone else's skill")
+
+    def test_foreign_hooks_in_a_group_with_ours_survive_install_and_uninstall(self):
+        mine = {"type": "command", "command": "echo my-own-formatter"}
+        settings = self.repo / ".claude/settings.local.json"
+        settings.parent.mkdir()
+        settings.write_text(json.dumps({"hooks": {
+            "PostToolUse": [{"hooks": [{"type": "command", "command": OLD_CODEX_COMMAND}, mine]}],
+            "Stop": "echo malformed but someone's"}}))
+        self.cli("install", "--repo", self.repo, "--agent", "claude")
+        after = json.loads(settings.read_text())["hooks"]
+        self.assertEqual(after["PostToolUse"][0], {"hooks": [mine]})
+        self.assertEqual(after["Stop"], "echo malformed but someone's")
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "claude", "--uninstall")
+        self.assertEqual((code, value["hooks_changed"]), (0, True))
+        self.assertEqual(json.loads(settings.read_text())["hooks"],
+                         {"PostToolUse": [{"hooks": [mine]}], "Stop": "echo malformed but someone's"})
+
+    def test_uninstall_removes_a_link_from_another_relay_checkout_and_print_needs_no_repo(self):
+        link = self.repo / ".agents/skills/research-relay"
+        link.parent.mkdir(parents=True)
+        link.symlink_to(self.repo.parent / "other-relay/skills/research-relay")  # dangling: that checkout is gone
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "codex", "--uninstall")
+        self.assertEqual(code, 0, value)
+        self.assertNotIn("skill_kept", value)
+        self.assertFalse(link.is_symlink())
+        plain = self.repo.parent / "not a repository"
+        plain.mkdir()
+        code, value = self.cli("install", "--repo", plain, "--agent", "codex", "--print")
+        self.assertEqual(code, 0, value)
+        self.assertIn(str(plain), value["hooks"]["PreCompact"][0]["hooks"][0]["command"])
 
     def test_uninstall_removes_a_stale_codex_hooks_file(self):
         # What an earlier relay left in a repository the notes had moved away from.

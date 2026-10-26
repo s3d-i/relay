@@ -5,6 +5,7 @@ pointer names (`notes attach`). The worktree, its lock and the private-input exc
 the home; the policy and session state stay with the project.
 """
 
+import contextlib
 import os
 from pathlib import Path
 import re
@@ -124,6 +125,13 @@ def _same(a, b):
         return False
 
 
+def _same_repo(a, b):
+    try:
+        return common_dir(a) == common_dir(b)
+    except (RelayError, OSError):
+        return False
+
+
 def worktrees(repo):
     """{branch: path} of this repository's notes worktrees that this environment can reach."""
     # -z preserves spaces, newlines and non-ASCII names without Git path quoting.
@@ -171,10 +179,31 @@ def worktree_path(repo, branch):
     """Where init checks out `branch`: research-relay/notes for this author's branch, else branches/<branch>."""
     runtime = runtime_dir(repo)
     local = runtime / "notes"
-    if branch == branch_name(repo) and not _accessible(local, common_dir(repo)):
-        return local  # free, or a stray directory that init refuses to touch
+    taken = any(_same(path, local) for name, path in worktrees(repo).items() if name != branch)
+    if branch == branch_name(repo) and not taken:
+        return local  # free, or something there (a stray directory, a detached checkout) that init refuses
     # Branch names never nest (git refuses a/relay-notes beside a/relay-notes/b), so neither do these.
     return runtime / "branches" / branch
+
+
+def main_worktree(repo):
+    """The repository's main checkout, so a pointer never names a linked worktree that may be removed."""
+    common = common_dir(repo)
+    return common.parent if common.name == ".git" else toplevel(repo)
+
+
+@contextlib.contextmanager
+def _notes_lock(repo):
+    """The project's lock, then the home's: attach cannot slip between resolving the pointer and using it."""
+    project = runtime_dir(repo)
+    with lock(project / "notes.lock"):
+        home, chosen = resolve(repo)
+        runtime = runtime_dir(home)
+        if runtime == project:  # one lock file: flock twice from one process would wait on itself
+            yield home, chosen
+        else:
+            with lock(runtime / "notes.lock"):
+                yield home, chosen
 
 
 def pointer(runtime):
@@ -223,9 +252,7 @@ def locate(repo):
 def init(repo, source=None, fresh=False):
     if source and fresh:
         raise RelayError("Pass --from or --fresh, not both.")
-    home, chosen = resolve(repo)
-    runtime = runtime_dir(home)
-    with lock(runtime / "notes.lock"):
+    with _notes_lock(repo) as (home, chosen):
         path = find(home, chosen)
         if path is None:
             branch = chosen or branch_name(home)
@@ -298,13 +325,12 @@ def inspect(repo):
 
 
 def commit(repo, paths, message):
-    home, chosen = resolve(repo)
-    path = find(home, chosen)
-    if path is None:
-        raise RelayError("No notes worktree. Run notes status/init first.")
-    if not paths or not message.strip():
-        raise RelayError("Pass each reviewed notes file with --path and a commit message.")
-    with lock(runtime_dir(home) / "notes.lock"):
+    with _notes_lock(repo) as (home, chosen):
+        path = find(home, chosen)
+        if path is None:
+            raise RelayError("No notes worktree. Run notes status/init first.")
+        if not paths or not message.strip():
+            raise RelayError("Pass each reviewed notes file with --path and a commit message.")
         current = git(path, "branch", "--show-current")
         if (current != chosen) if chosen else not is_notes_branch(current):
             raise RelayError("Notes checkout changed branch; refusing to commit.")
@@ -352,7 +378,7 @@ def left_behind(project, home, branch):
     worktrees and stranded (local notes branches, or their upstreams, with commits the home's
     branch lacks) would leave notes behind; contained and remote are only reported.
     """
-    result = {"worktrees": [], "stranded": [], "contained": [], "remote": []}
+    result = {"source": str(project), "worktrees": [], "stranded": [], "contained": [], "remote": []}
     for name, path in worktrees(project).items():
         private = path / PRIVATE_ARTIFACTS
         result["worktrees"].append({"path": str(path), "branch": name, "status": git(path, "status", "--short"),
@@ -379,20 +405,27 @@ def _left_text(left, home, branch):
     """One message per kind of leftover, for status warnings and attach refusals."""
     where = f"{branch} in {home}"
     texts = []
+    if left.get("unreachable"):
+        texts.append(f"The earlier notes home {left['unreachable']} is not a repository here, so relay cannot "
+                     "check what its notes hold.")
     for tree in left["worktrees"]:
         changed = len(tree["status"].splitlines())
-        texts.append(f"This repository still has its own notes worktree at {tree['path']} ({tree['branch']}, "
-                     f"{changed} changed files, {tree['private_files']} private input files). Bring what it holds "
-                     f"into {where}, copy artifacts/private/ by hand, then remove it with git worktree remove, "
-                     "which deletes ignored files: copy the private inputs first.")
+        texts.append(f"A notes worktree remains at {tree['path']} ({tree['branch']}; {changed} changed files, "
+                     f"{tree['private_files']} private input files). Bring what it holds into {where}, copy "
+                     "artifacts/private/ by hand, then remove it with git worktree remove, which deletes "
+                     "ignored files: copy the private inputs first.")
     if left["stranded"]:
-        texts.append("Notes branches here hold commits that " + where + " lacks: "
+        source = shlex.quote(str(left["source"]))
+        texts.append("Notes branches in " + str(left["source"]) + " hold commits that " + where + " lacks: "
                      + ", ".join(f"{e['ref']} ({e['commit']})" for e in left["stranded"])
-                     + f". Merge them there first, for example git -C {shlex.quote(str(home))} fetch "
-                     "<this repository> <branch> and a merge of FETCH_HEAD in the home's notes worktree.")
+                     + f". Bring them into {branch} first. If it does not exist yet, "
+                     f"git -C {shlex.quote(str(home))} fetch {source} <ref>:{branch} creates it from one of them; "
+                     f"otherwise, in a checkout of {branch}: git pull --no-rebase --allow-unrelated-histories "
+                     f"{source} <ref> (notes branches start from separate roots).")
     if left["contained"]:
-        texts.append("Notes branches here are already contained in " + where + ": "
-                     + ", ".join(e["ref"] for e in left["contained"]) + ". Delete the local ones with git branch -D.")
+        texts.append(f"Notes branches in {left['source']} are already contained in {where}: "
+                     + ", ".join(e["ref"] for e in left["contained"])
+                     + ". Delete the local ones there with git branch -D once nothing else needs them.")
     if left["remote"]:
         texts.append("Remote notes branches remain: "
                      + ", ".join(f"{e['ref']} ({e['url'] or 'unknown URL'})" for e in left["remote"])
@@ -410,29 +443,61 @@ def _check_branch(repo, branch):
                          "stay recognizable, and a code branch cannot be chosen by mistake.")
 
 
+def _previous_left(runtime, previous, home, branch):
+    """What moving from the pointer's earlier home and branch would leave behind there."""
+    old, old_branch = home_path(runtime, previous), previous["branch"]
+    result = {"source": str(old), "worktrees": [], "stranded": [], "contained": [], "remote": []}
+    try:
+        common_dir(old)
+    except (RelayError, OSError):
+        return {**result, "unreachable": str(old)}
+    path = find(old, old_branch)
+    if path is not None and git(path, "status", "--short"):
+        private = path / PRIVATE_ARTIFACTS
+        result["worktrees"].append({"path": str(path), "branch": old_branch, "status": git(path, "status", "--short"),
+                                    "private_files": sum(1 for p in private.rglob("*") if p.is_file())
+                                    if private.is_dir() else 0})
+    if _exists(old, "refs/heads/" + old_branch):
+        tip = git(old, "rev-parse", "refs/heads/" + old_branch)
+        entry = {"ref": old_branch, "commit": tip[:12]}
+        result["contained" if _contained(home, tip, branch) else "stranded"].append(entry)
+    return result
+
+
 def attach(repo, to=None, branch=None):
     """Keep this project's notes on `branch` of `to` (default: this repository). Policy and sessions stay here."""
     project = toplevel(repo)
-    home = toplevel(to) if to else project
+    home = main_worktree(to) if to else main_worktree(project)
     same = common_dir(home) == common_dir(project)
     if same and branch is None:
         raise RelayError("Pass --to another repository, or --branch to keep the notes here on a chosen branch.")
     if branch is not None:
         _check_branch(home, branch)
-    if not same and pointer(runtime_dir(home)) is not None:
-        raise RelayError(f"{home} keeps its notes elsewhere (notes attach); attach to that repository instead.")
+    pinned = None if same else pointer(runtime_dir(home))
+    if pinned is not None:
+        if common_dir(home_path(runtime_dir(home), pinned)) != common_dir(home):
+            raise RelayError(f"{home} keeps its notes in another repository (notes attach); attach to that one instead.")
+        branch = branch or pinned["branch"]  # the home's own chosen branch is its notes
     branch = branch or branch_name(home)  # recorded, so a later user.name change does not move the notes
     runtime = runtime_dir(project)
     with lock(runtime / "notes.lock"):
         previous = pointer(runtime)
-        left = None if same else left_behind(project, home, branch)
-        if left and (left["worktrees"] or left["stranded"]):
-            texts = _left_text({**left, "contained": [], "remote": []}, home, branch)
-            raise RelayError(" ".join(texts) + " relay attaches only when this repository's notes would not be "
-                             "left behind. Nothing was changed.")
+        old = home_path(runtime, previous) if previous else None
+        # Moving from an earlier home: what its branch holds must reach the new one. A self-pin is
+        # this repository's own notes, which left_behind already judges.
+        moving = old is not None and (old, previous["branch"]) != (home, branch) and not _same_repo(old, project)
+        parts = [part for part in (None if same else left_behind(project, home, branch),
+                                   _previous_left(runtime, previous, home, branch) if moving else None) if part]
+        blocking = [part for part in parts if part["worktrees"] or part["stranded"] or part.get("unreachable")]
+        if blocking:
+            texts = [text for part in blocking for text in _left_text({**part, "contained": [], "remote": []},
+                                                                        home, branch)]
+            raise RelayError(" ".join(texts) + " relay attaches only when notes would not be left behind; to "
+                             "leave an earlier home's notes where they are, run notes detach first. "
+                             "Nothing was changed.")
         write_json(runtime / POINTER, {"version": 1, "home": os.path.relpath(home, runtime.parent),
                                        "branch": branch, "since": now()})
-    report = _left_text(left, home, branch) if left else []
+    report = [text for part in parts for text in _left_text(part, home, branch)]
     return {"project": str(project), "home": str(home), "branch": branch, "pointer": str(runtime / POINTER),
             **({"previous": previous} if previous else {}), **({"left_behind": report} if report else {}),
             "notes": _quiet(inspect, project)}

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import shutil
 import unittest
+from unittest.mock import patch
 
 from base import RepoCase
 from research_relay import hooks, notes, policy
@@ -15,12 +16,17 @@ class AttachCase(RepoCase):
 
     def setUp(self):
         super().setUp()
-        self.home = self.repo.parent / "notes home"
-        self.home.mkdir()
-        git(self.home, "init", "-b", "main")
-        git(self.home, "config", "user.name", "Home Author")
-        git(self.home, "config", "user.email", "home@example.invalid")
+        self.home = self.make_repo("notes home", "Home Author")
         git(self.home, "commit", "--allow-empty", "-m", "home baseline")
+
+    def make_repo(self, name, user="Relay Test"):
+        # Local identity: a global user.name must not decide test branch names.
+        path = self.repo.parent / name
+        path.mkdir()
+        git(path, "init", "-b", "main")
+        git(path, "config", "user.name", user)
+        git(path, "config", "user.email", "relay-test@example.invalid")
+        return path
 
     def heads(self, repo):
         return git(repo, "for-each-ref", "--format=%(refname)", "refs/heads").splitlines()
@@ -101,15 +107,13 @@ class AttachTests(AttachCase):
         cases = [((self.repo, None, None), "--to another repository"),
                  ((self.repo, self.home, "main"), "must end in relay-notes"),
                  ((self.repo, self.home, "bad..name/relay-notes"), "Invalid branch name"),
-                 ((self.repo, self.repo.parent, None), "")]
+                 ((self.repo, self.repo.parent, None), "not a git repository")]
         for args, message in cases:
             with self.subTest(args=args), self.assertRaisesRegex(RelayError, message):
                 notes.attach(*args)
-        third = self.repo.parent / "third"
-        third.mkdir()
-        git(third, "init", "-b", "main")
+        third = self.make_repo("third")
         notes.attach(third, self.home)
-        with self.assertRaisesRegex(RelayError, "keeps its notes elsewhere"):
+        with self.assertRaisesRegex(RelayError, "keeps its notes in another repository"):
             notes.attach(self.repo, third)
         self.assertFalse((self.runtime / notes.POINTER).exists())
 
@@ -119,7 +123,7 @@ class AttachTests(AttachCase):
         private = own / notes.PRIVATE_INPUTS / "s1.md"
         private.parent.mkdir(parents=True)
         private.write_text("Synthetic private input")
-        with self.assertRaisesRegex(RelayError, "own notes worktree.*1 private input files.*git worktree remove"):
+        with self.assertRaisesRegex(RelayError, "notes worktree remains at .*1 private input files.*git worktree remove"):
             notes.attach(self.repo, self.home)
         self.assertFalse((self.runtime / notes.POINTER).exists())
         git(self.repo, "worktree", "remove", "--force", str(own))
@@ -149,6 +153,56 @@ class AttachTests(AttachCase):
         git(self.repo, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
         with self.assertRaisesRegex(RelayError, r"origin/elsewhere \("):
             notes.attach(self.repo, self.home)
+
+    def test_init_still_refuses_a_conventional_directory_it_cannot_use(self):
+        stray = self.runtime / "notes"
+        stray.mkdir(parents=True)
+        (stray / "draft.md").write_text("Someone's draft")
+        with self.assertRaisesRegex(RelayError, "Unregistered notes directory"):
+            notes.init(self.repo)
+        shutil.rmtree(stray)
+        path = Path(notes.init(self.repo)["notes"])
+        git(path, "checkout", "--detach")
+        with self.assertRaisesRegex(RelayError, "Unregistered notes directory"):
+            notes.init(self.repo)
+        self.assertFalse((self.runtime / "branches").exists())
+
+    def test_a_home_that_pins_its_own_branch_is_still_a_home(self):
+        notes.attach(self.home, branch="Home-Author/main/relay-notes")
+        result = notes.attach(self.repo, self.home)
+        self.assertEqual(result["branch"], "Home-Author/main/relay-notes")
+        self.assertEqual(notes.resolve(self.repo), (self.home, "Home-Author/main/relay-notes"))
+
+    def test_moving_to_another_home_waits_for_the_first_homes_notes(self):
+        notes.attach(self.repo, self.home)
+        path = Path(notes.init(self.repo)["notes"])
+        notes.commit(self.repo, ["RESEARCH.md"], "Notes in the first home")
+        second = self.make_repo("second home")
+        with self.assertRaisesRegex(RelayError, "in .*notes home hold commits .*second home lacks.*notes detach first"):
+            notes.attach(self.repo, second)
+        (path / "draft.md").write_text("Uncommitted")
+        git(second, "fetch", str(self.home), "Home-Author/relay-notes:Relay-Test/relay-notes")
+        with self.assertRaisesRegex(RelayError, "notes worktree remains at .*1 changed files"):
+            notes.attach(self.repo, second)
+        self.assertEqual(notes.resolve(self.repo)[0], self.home)
+        (path / "draft.md").unlink()
+        result = notes.attach(self.repo, second)
+        self.assertEqual((result["home"], result["previous"]["branch"]), (str(second), "Home-Author/relay-notes"))
+        self.assertIn("already contained", " ".join(result["left_behind"]))
+        # Leaving the first home's notes behind is possible, but only on purpose.
+        third = self.make_repo("third home")
+        with self.assertRaises(RelayError):
+            notes.attach(self.repo, third)
+        notes.detach(self.repo)
+        self.assertEqual(notes.attach(self.repo, third)["home"], str(third))
+
+    def test_attaching_to_a_linked_worktree_records_the_main_checkout(self):
+        task = self.repo.parent / "home task"
+        git(self.home, "worktree", "add", str(task), "-b", "task")
+        notes.attach(self.repo, task)
+        self.assertEqual(json.loads((self.runtime / notes.POINTER).read_text())["home"], "../../notes home")
+        git(self.home, "worktree", "remove", str(task))
+        self.assertEqual(notes.resolve(self.repo)[0], self.home)
 
     def test_relative_pointer_holds_when_the_workspace_moves(self):
         notes.attach(self.repo, self.home)
@@ -199,7 +253,7 @@ class AttachHookTests(AttachCase):
 
     def test_session_text_names_the_home_and_the_project(self):
         text = self.hook("SessionStart", source="startup")
-        self.assertIn(f"relay notes status --repo {self.repo}", text)
+        self.assertIn(f"relay notes status --repo '{self.repo}'", text)  # quoted: the path has spaces
         self.assertNotIn("chosen with relay notes attach", text)
         notes.attach(self.repo, self.home)
         text = self.hook("SessionStart", source="startup")
@@ -208,8 +262,18 @@ class AttachHookTests(AttachCase):
         self.assertIn("chosen with relay notes attach", self.hook("SessionStart", source="compact"))
         shutil.rmtree(self.home)
         self.assertIn("not a repository on this machine", self.hook("SessionStart", source="startup"))
-        self.assertEqual(hooks.handle({"hook_event_name": "PreCompact", "cwd": str(self.repo)}, claude)["decision"],
-                         "block")
+        # A missing home costs the session nothing else: the closeout still arrives.
+        self.transcript.write_text("".join(json.dumps(line) + "\n" for line in claude_lines(75000)))
+        self.assertIn("Begin closeout", self.hook("PostToolUse"))
+
+    def test_a_home_the_hook_cannot_read_still_leaves_the_reminders(self):
+        notes.attach(self.repo, self.home)
+        self.transcript.write_text("".join(json.dumps(line) + "\n" for line in claude_lines(75000)))
+        with patch.object(notes, "where", side_effect=PermissionError(13, "Permission denied")):
+            self.assertIn("pointer cannot be read", self.hook("SessionStart", source="startup"))
+            text = self.hook("PostToolUse")
+        self.assertIn("Begin closeout", text)
+        self.assertNotIn("hook failed", text)
 
     def test_an_open_session_is_told_when_its_notes_move(self):
         self.hook("SessionStart", source="startup")

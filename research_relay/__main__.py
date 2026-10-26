@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 
@@ -121,7 +122,11 @@ def main(argv=None):
         if args.cmd == "install":
             backend = backends.get(args.agent)
             if args.print:
-                value = backend.render_hooks(backend.hook_command(install.LAUNCHER, install.toplevel(args.repo)))
+                try:
+                    repo = install.toplevel(args.repo)
+                except RelayError:
+                    repo = Path(args.repo).resolve()  # printing writes nothing; the command only names it
+                value = backend.render_hooks(backend.hook_command(install.LAUNCHER, repo))
             else:
                 value = install.install(args.repo, args.agent, args.uninstall)
         elif args.cmd == "on":

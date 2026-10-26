@@ -108,6 +108,15 @@ class HookTests(HookCase):
                       ["hookSpecificOutput"]["additionalContext"])
         self.assertFalse((other / ".git/research-relay").exists())
 
+    def test_installed_repo_that_moved_falls_back_to_the_cwd(self):
+        # A Codex command still names the project's old path; the session runs in its new one.
+        self.on("autoresearch")
+        payload = {"hook_event_name": "PreCompact", "session_id": "s1", "cwd": str(self.repo), "trigger": "auto"}
+        moved = str(self.repo.parent / "moved away")
+        self.assertEqual(hooks.handle(payload, codex, moved)["continue"], False)
+        out = hooks.handle({**payload, "hook_event_name": "SessionStart", "source": "startup"}, codex, moved)
+        self.assertIn(f"--repo '{self.repo}'", out["hookSpecificOutput"]["additionalContext"])
+
     def test_policy_off_returns_empty(self):
         self.on("autoresearch")
         policy.disable(self.runtime)

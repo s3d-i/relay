@@ -1,5 +1,6 @@
 """Install the skill symlink, ignore rules and hooks file into a project, per agent."""
 
+import os
 from pathlib import Path
 
 from . import backends
@@ -63,7 +64,9 @@ def _uninstall(repo, agent, backend):
     # Hooks first: an unreadable hooks file stops here with nothing changed.
     result = backend.uninstall_hooks(repo)
     target = repo / backend.SKILL_DIR / "research-relay"
-    if target.is_symlink() and target.resolve() == SKILL:
+    # relay's link from this or another relay checkout; a link only, so its target is never touched.
+    if target.is_symlink() and (target.resolve() == SKILL
+                                or os.readlink(target).rstrip("/").endswith("skills/research-relay")):
         target.unlink()
     elif target.exists() or target.is_symlink():
         result["skill_kept"] = "not relay's link; left in place"
@@ -99,7 +102,9 @@ def warnings(repo, policy=None):
             if not present(backend, repo):
                 continue
             if not backend.hooks_installed(repo, backend.hook_command(LAUNCHER, repo)):
-                result.append(f"relay's {name} hooks run an older command; run install --agent {name} again.")
+                result.append(f"relay's {name} hooks run a different command than this relay writes (an older "
+                              f"relay, another checkout or another Python); run install --agent {name} again "
+                              "unless that is intended.")
             if not active:
                 result.append(f"relay's {name} hooks are installed but relay is off here. If the notes moved to "
                               f"another repository, remove them with install --uninstall --agent {name}.")

@@ -26,19 +26,35 @@ def hook_map(command):
             for event in HOOK_EVENTS}
 
 
+def _our_hook(hook):
+    return isinstance(hook, dict) and "research-relay" in str(hook.get("command", ""))
+
+
 def ours(entry):
-    return any("research-relay" in str(hook.get("command", "")) for hook in entry.get("hooks", [])
-               if isinstance(hook, dict)) if isinstance(entry, dict) else False
+    return isinstance(entry, dict) and isinstance(entry.get("hooks"), list) and any(map(_our_hook, entry["hooks"]))
+
+
+def _without_ours(entry):
+    """The entry with relay's hooks taken out; None when nothing else was in it."""
+    if not ours(entry):
+        return entry
+    rest = [hook for hook in entry["hooks"] if not _our_hook(hook)]
+    return {**entry, "hooks": rest} if rest else None
 
 
 def merge_hooks(hooks, fragment):
-    """Replace our entries, keep foreign ones. Returns True when anything changed."""
+    """Replace our hooks, keep foreign ones, also inside a group shared with ours. True when anything changed."""
     if not isinstance(hooks, dict):
         raise RelayError("Existing 'hooks' is not an object; refusing to overwrite it.")
     changed = False
     for event in set(hooks) | set(fragment):
+        current = hooks.get(event, [])
+        if not isinstance(current, list):
+            if event in fragment:
+                raise RelayError(f"Existing hooks.{event} is not a list; refusing to overwrite it.")
+            continue  # someone else's, whatever its shape
         # Stale entries from earlier relay versions (other events, old commands) go too.
-        kept = [e for e in hooks.get(event, []) if not ours(e)] + fragment.get(event, [])
+        kept = [entry for entry in map(_without_ours, current) if entry is not None] + fragment.get(event, [])
         if hooks.get(event) != kept:
             if kept:
                 hooks[event] = kept

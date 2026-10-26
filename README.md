@@ -95,15 +95,17 @@ relay off     --repo /path/to/project
 `install` symlinks the skill into the project, adds `.gitignore` rules for the symlink, the
 hooks file and `/artifacts/private/`, and writes or merges the hooks file. It replaces relay's
 earlier entries, including those for events it no longer uses, and never removes hooks it did
-not write. `--print` only prints the hooks JSON. `--uninstall` removes the link and relay's
-hook entries, and deletes the hooks file only when nothing else is left in it; foreign hooks,
+not write, also inside a group it shares with relay's. `--print` only prints the hooks JSON.
+`--uninstall` removes the link and relay's hook entries, and deletes the hooks file only when
+nothing else is left in it; foreign hooks,
 ignore rules, notes and policy stay. A foreign skill at the link's place is left alone, and
 relay hooks still installed for the other agent are named. After an upgrade, run `install`
 again: `status` reports `current: false` while the hooks file holds an older command.
 
 A hook reads the policy of the project it was installed in: `CLAUDE_PROJECT_DIR` for Claude
-Code, `hook --repo <project>` in the Codex command. Without either it falls back to the payload's
-`cwd`, which in Claude Code follows the session into whatever repository it last `cd`'d to.
+Code, `hook --repo <project>` in the Codex command. Without either, or when that path is no
+longer a repository (the project moved), it falls back to the payload's `cwd`, which in Claude
+Code follows the session into whatever repository it last `cd`'d to.
 
 `on` replaces the policy: omitted options return to their defaults, and a bare `on` means
 `--mode rhizome`. It takes `--mode`, `--agent`, `--window N`, `--compact-limit N`,
@@ -199,7 +201,12 @@ Several projects can share one home and branch, or each take its own branch ther
 - `attach` refuses while the project still holds notes the home would not get: a notes worktree
   of its own, or a local notes branch (or its upstream) with commits the home's branch lacks.
   Move them first. `git worktree remove` deletes ignored files, so copy `artifacts/private/`
-  by hand. It also refuses a home that is itself attached elsewhere.
+  by hand. It also refuses a home that is itself attached elsewhere. A home that pins its own
+  branch is fine, and its projects default to that branch.
+- Moving an attached project to another home checks the earlier home the same way: uncommitted
+  notes there, or commits its branch holds that the new one lacks, stop the move. `notes detach`
+  first leaves them where they are on purpose.
+- `--to` may name a linked worktree of the home; the pointer records the home's main checkout.
 - What may stay is reported: local notes branches already in the home, and remote notes
   branches with their URL. relay cannot tell whether a remote is public; delete such a branch
   yourself if it is. `status` repeats these warnings until they are gone.

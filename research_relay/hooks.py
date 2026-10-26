@@ -26,7 +26,10 @@ def _handle(payload, backend, event, repo):
     if event not in backend.HOOK_EVENTS:
         return {}
     # The cwd follows the session's cd into other repositories; the installed repository does not.
-    runtime = policy.locate(repo or payload.get("cwd") or os.getcwd())
+    runtime = policy.locate(repo) if repo else None
+    if runtime is None:
+        repo = None  # not given, or no longer a repository (moved, renamed): the cwd, as hooks did before
+        runtime = policy.locate(payload.get("cwd") or os.getcwd())
     active = policy.load(runtime) if runtime else None
     if not active or not active.get("active"):
         return {}  # unrelated repositories and switched-off ones see nothing
@@ -40,7 +43,7 @@ def _handle(payload, backend, event, repo):
     project = repo or payload.get("cwd") or os.getcwd()
     try:
         where = notes.where(runtime)  # no Git here: hooks stay cheap
-    except RelayError as exc:
+    except (RelayError, OSError) as exc:  # an unreadable home must not cost the session its reminders
         where = {"error": str(exc)}
     # Parallel tool calls fire this hook concurrently; one reminder must reach one of them.
     with lock(policy.session_path(runtime, session_id).with_suffix(".lock")):
