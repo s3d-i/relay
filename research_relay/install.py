@@ -1,9 +1,10 @@
 """Install the skill symlink, ignore rules and hooks file into a project, per agent."""
 
+import os
 from pathlib import Path
 
 from . import backends
-from .state import RelayError, git
+from .state import RelayError, git, read_json, toplevel
 
 
 SKILL = Path(__file__).resolve().parent.parent / "skills/research-relay"
@@ -31,10 +32,6 @@ def patch_gitignore(repo, rules):
     return True
 
 
-def toplevel(repo):
-    return Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
-
-
 def skill_link(repo, backend):
     target = repo / backend.SKILL_DIR / "research-relay"
     installed = target.is_symlink() and target.resolve() == SKILL
@@ -46,18 +43,15 @@ def skill_link(repo, backend):
 def install(repo, agent, uninstall=False):
     backend = backends.get(agent)
     repo = toplevel(repo)
-    target, installed = skill_link(repo, backend)
     if uninstall:
-        if installed:
-            target.unlink()
-        return {"agent": agent, "skill": str(target), "installed": False,
-                "retained": "ignore rules, hooks file, notes and policy"}
+        return _uninstall(repo, agent, backend)
+    target, installed = skill_link(repo, backend)
     rules = ignore_rules(backend)
     gitignore_changed = patch_gitignore(repo, rules)
     if not installed:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.symlink_to(SKILL, target_is_directory=True)
-    result = backend.install_hooks(repo, backend.hook_command(LAUNCHER))
+    result = backend.install_hooks(repo, backend.hook_command(LAUNCHER, repo))
     tracked = git(repo, "ls-files", "-z", "--", *(rule.strip("/") for rule in rules))
     notes = backend.warnings(repo, None)
     if tracked:
@@ -66,26 +60,70 @@ def install(repo, agent, uninstall=False):
             **result, **({"warnings": notes} if notes else {})}
 
 
-def warnings(repo, policy=None):
-    repo = toplevel(repo)
-    result = []
+def _uninstall(repo, agent, backend):
+    # Hooks first: an unreadable hooks file stops here with nothing changed.
+    result = backend.uninstall_hooks(repo)
+    target = repo / backend.SKILL_DIR / "research-relay"
+    # relay's link from this or another relay checkout; a link only, so its target is never touched.
+    if target.is_symlink() and (target.resolve() == SKILL
+                                or os.readlink(target).rstrip("/").endswith("skills/research-relay")):
+        target.unlink()
+    elif target.exists() or target.is_symlink():
+        result["skill_kept"] = "not relay's link; left in place"
+    others = []
     for name in backends.NAMES:
         try:
-            result.extend(backends.get(name).warnings(repo, policy))
+            if name != agent and present(backends.get(name), repo):
+                others.append(name)
+        except PermissionError:
+            pass
+    return {"agent": agent, "skill": str(target), "installed": False, **result,
+            **({"other_agents_hooks": others} if others else {}),
+            "retained": "ignore rules, foreign hooks, notes and policy"}
+
+
+def present(backend, repo):
+    """Whether the hooks file holds any relay entry, current or from an older relay."""
+    try:
+        current = read_json(backend.hooks_file(repo), {})
+    except RelayError:
+        return False
+    return backends.present(current.get("hooks"))
+
+
+def warnings(repo, policy=None):
+    repo = toplevel(repo)
+    active = bool(policy and policy.get("active"))
+    result = []
+    for name in backends.NAMES:
+        backend = backends.get(name)
+        try:
+            result.extend(backend.warnings(repo, policy))
+            if not present(backend, repo):
+                continue
+            if not backend.hooks_installed(repo, backend.hook_command(LAUNCHER, repo)):
+                result.append(f"relay's {name} hooks run a different command than this relay writes (an older "
+                              f"relay, another checkout or another Python); run install --agent {name} again "
+                              "unless that is intended.")
+            if not active:
+                result.append(f"relay's {name} hooks are installed but relay is off here. If the notes moved to "
+                              f"another repository, remove them with install --uninstall --agent {name}.")
         except PermissionError:
             result.append(f"{name} hook settings are not readable in this environment.")
     return result
 
 
 def hooks_status(repo):
+    """installed: any relay entry; current: exactly the entries this relay writes."""
     repo = toplevel(repo)
     result = {}
     for name in backends.NAMES:
         backend = backends.get(name)
         value = {"file": str(backend.hooks_file(repo))}
         try:
-            value["installed"] = backend.hooks_installed(repo, backend.hook_command(LAUNCHER))
+            value["installed"] = present(backend, repo)
+            value["current"] = backend.hooks_installed(repo, backend.hook_command(LAUNCHER, repo))
         except PermissionError:
-            value.update(installed=None, error="Hook settings are not readable in this environment.")
+            value.update(installed=None, current=None, error="Hook settings are not readable in this environment.")
         result[name] = value
     return result

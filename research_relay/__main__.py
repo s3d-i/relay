@@ -1,5 +1,7 @@
 import argparse
 import json
+import os
+from pathlib import Path
 import subprocess
 import sys
 
@@ -18,7 +20,7 @@ def parser():
     q = sub.add_parser("install", help="symlink the skill, add ignore rules, write the hooks file")
     q.add_argument("--repo", default=".")
     q.add_argument("--agent", required=True, **agent)
-    q.add_argument("--uninstall", action="store_true", help="remove the skill symlink only")
+    q.add_argument("--uninstall", action="store_true", help="remove the skill symlink and relay's hook entries")
     q.add_argument("--print", action="store_true", help="print the hooks JSON instead of installing")
     q = sub.add_parser("on", help="activate the policy for this repository")
     q.add_argument("--repo", default=".")
@@ -38,9 +40,15 @@ def parser():
     q.add_argument("--repo", default=".")
     q = sub.add_parser("hook", help="hook entry point: payload JSON on stdin, output JSON on stdout")
     q.add_argument("--agent", required=True, **agent)
-    q = sub.add_parser("notes", help="init | status | links | commit on the relay-notes worktree")
-    q.add_argument("action", choices=("init", "status", "links", "commit"))
+    q.add_argument("--repo", help="the repository the hook belongs to (default: $CLAUDE_PROJECT_DIR for claude, "
+                                  "else the payload cwd)")
+    q = sub.add_parser("notes", help="init | status | links | commit on the relay-notes worktree; attach | detach "
+                                     "to keep this repository's notes in another repository")
+    q.add_argument("action", choices=("init", "status", "links", "commit", "attach", "detach"))
     q.add_argument("--repo", default=".")
+    q.add_argument("--to", metavar="REPO", help="attach: the repository that holds the notes (default: --repo)")
+    q.add_argument("--branch", help="attach: the notes branch there, ending in relay-notes "
+                                    "(default: that repository's <git user>/relay-notes)")
     q.add_argument("--path", action="append", default=[],
                    help="reviewed file to commit, or one links query file (default RESEARCH.md)")
     q.add_argument("-m", "--message", default="")
@@ -54,9 +62,13 @@ def status(repo):
     runtime = runtime_dir(repo)
     current = policy.load(runtime)
     active = bool(current and current.get("active"))
+    try:
+        found = notes.inspect(repo)
+    except RelayError as exc:  # a notes problem must not hide the policy
+        found = {"error": str(exc)}
     return {"policy": current, "active": active, "mode": policy.mode(current) if active else None,
-            "warnings": install.warnings(repo, current), "hooks": install.hooks_status(repo),
-            "sessions": policy.sessions(runtime), "notes": notes.inspect(repo)}
+            "warnings": install.warnings(repo, current) + notes.warnings(repo), "hooks": install.hooks_status(repo),
+            "sessions": policy.sessions(runtime), "notes": found}
 
 
 def switch_on(args):
@@ -71,12 +83,18 @@ def switch_on(args):
 
 
 def notes_command(args):
+    if (args.to or args.branch) and args.action != "attach":
+        raise RelayError("--to and --branch belong to notes attach.")
+    if args.action == "attach":
+        return notes.attach(args.repo, args.to, args.branch)
+    if args.action == "detach":
+        return notes.detach(args.repo)
     if args.action == "init":
         return notes.init(args.repo, args.source, args.fresh)
     if args.action == "status":
         return notes.inspect(args.repo)
     if args.action == "links":
-        path = notes.find(args.repo)
+        path = notes.locate(args.repo)
         if path is None:
             raise RelayError("No notes worktree. Run notes status/init first.")
         if len(args.path) > 1:
@@ -85,26 +103,30 @@ def notes_command(args):
     return notes.commit(args.repo, args.path, args.message)
 
 
-def hook(agent):
+def hook(agent, repo):
     backend = backends.get(agent)
     try:
         payload = json.load(sys.stdin)
     except ValueError as exc:
         payload = f"unreadable payload: {exc}"  # handle() reports a non-object as a failure
-    return hooks.handle(payload, backend)
+    return hooks.handle(payload, backend, repo or backend.project_dir(os.environ))
 
 
 def main(argv=None):
     args = parser().parse_args(argv)
     if args.cmd == "hook":
-        print(json.dumps(hook(args.agent), ensure_ascii=False))
+        print(json.dumps(hook(args.agent, args.repo), ensure_ascii=False))
         return 0  # decisions travel in the JSON; a non-zero exit would mean "hook broken"
     code = 0
     try:
         if args.cmd == "install":
             backend = backends.get(args.agent)
             if args.print:
-                value = backend.render_hooks(backend.hook_command(install.LAUNCHER))
+                try:
+                    repo = install.toplevel(args.repo)
+                except RelayError:
+                    repo = Path(args.repo).resolve()  # printing writes nothing; the command only names it
+                value = backend.render_hooks(backend.hook_command(install.LAUNCHER, repo))
             else:
                 value = install.install(args.repo, args.agent, args.uninstall)
         elif args.cmd == "on":

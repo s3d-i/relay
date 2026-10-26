@@ -20,10 +20,12 @@ python3 -m research_relay on      --repo /path/to/project --agent codex --compac
   file and refusing to overwrite a foreign file it cannot merge;
 - adds `.gitignore` rules for the symlink, `/.codex/hooks.json`, and `/artifacts/private/`.
 
-The command is `python3 <abs-relay-checkout>/skills/research-relay/scripts/relay.py hook --agent codex`.
-Hooks run with the session cwd and Codex sets no project env var, so the paths are absolute.
-Timeout 5 s. Events: SessionStart, UserPromptSubmit, PostToolUse, PreCompact.
-`install --print` shows the JSON without writing.
+The command is `python3 <abs-relay-checkout>/skills/research-relay/scripts/relay.py hook --agent codex --repo <abs-project>`.
+Hooks run with the session cwd and Codex sets no project env var, so the paths are absolute,
+and `--repo` names the project the hooks belong to. Timeout 5 s. Events: SessionStart,
+UserPromptSubmit, PostToolUse, PreCompact. `install --print` shows the JSON without writing;
+`install --uninstall` removes the skill link and relay's entries, and deletes the hooks file
+only when nothing else is left in it.
 
 Trust: open the project in the app and trust the hooks once through `/hooks`. relay does not
 check or grant trust. A session opened before the hooks file existed may not have loaded it;

@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -6,6 +7,10 @@ import unittest
 from base import ROOT, RepoCase
 from research_relay import hooks, policy
 from research_relay.backends import claude, codex
+
+
+# Hook subprocesses must not inherit the project of a Claude Code session running the suite.
+ENV = {key: value for key, value in os.environ.items() if key != "CLAUDE_PROJECT_DIR"}
 
 
 def codex_lines(used, window=100000):
@@ -87,6 +92,30 @@ class HookTests(HookCase):
             for backend in (codex, claude):
                 self.assertEqual(self.hook(backend, "PreCompact", cwd=str(cwd)), {})
                 self.assertEqual(self.hook(backend, "PostToolUse", cwd=str(cwd)), {})
+
+    def test_installed_repo_wins_over_a_cwd_in_another_repo(self):
+        # The session cd'd into another repository; the hook still belongs to the one that installed it.
+        self.on("autoresearch")
+        other = self.repo.parent / "other"
+        other.mkdir()
+        subprocess.run(["git", "init", "-q", str(other)], check=True)
+        payload = {"hook_event_name": "PreCompact", "session_id": "s1", "cwd": str(other), "trigger": "auto"}
+        self.assertEqual(hooks.handle(payload, claude), {})  # older hook commands: the cwd decides
+        self.assertEqual(hooks.handle(payload, claude, str(self.repo))["decision"], "block")
+        self.write(claude_lines(FINAL))
+        payload.update(hook_event_name="PostToolUse", transcript_path=str(self.transcript))
+        self.assertIn("Begin closeout", hooks.handle(payload, claude, str(self.repo))
+                      ["hookSpecificOutput"]["additionalContext"])
+        self.assertFalse((other / ".git/research-relay").exists())
+
+    def test_installed_repo_that_moved_falls_back_to_the_cwd(self):
+        # A Codex command still names the project's old path; the session runs in its new one.
+        self.on("autoresearch")
+        payload = {"hook_event_name": "PreCompact", "session_id": "s1", "cwd": str(self.repo), "trigger": "auto"}
+        moved = str(self.repo.parent / "moved away")
+        self.assertEqual(hooks.handle(payload, codex, moved)["continue"], False)
+        out = hooks.handle({**payload, "hook_event_name": "SessionStart", "source": "startup"}, codex, moved)
+        self.assertIn(f"--repo '{self.repo}'", out["hookSpecificOutput"]["additionalContext"])
 
     def test_policy_off_returns_empty(self):
         self.on("autoresearch")
@@ -244,21 +273,35 @@ class HookTests(HookCase):
         payload = json.dumps({"hook_event_name": "PostToolUse", "session_id": "s1", "cwd": str(self.repo),
                               "transcript_path": str(self.transcript)})
         procs = [subprocess.Popen([sys.executable, "-m", "research_relay", "hook", "--agent", "claude"],
-                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, cwd=ROOT)
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, cwd=ROOT, env=ENV)
                  for _ in range(6)]
         outputs = [json.loads(proc.communicate(payload, timeout=30)[0]) for proc in procs]
         self.assertEqual(sum(1 for out in outputs if out), 1)
 
+    def run_hook(self, stdin, *args, agent="codex", env=None):
+        result = subprocess.run([sys.executable, "-m", "research_relay", "hook", "--agent", agent, *args],
+                                input=stdin, capture_output=True, text=True, cwd=ROOT, timeout=30,
+                                env={**ENV, **(env or {})})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
     def test_cli_hook_prints_one_json_object_and_exits_zero(self):
-        def run(stdin):
-            result = subprocess.run([sys.executable, "-m", "research_relay", "hook", "--agent", "codex"],
-                                    input=stdin, capture_output=True, text=True, cwd=ROOT, timeout=30)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            return json.loads(result.stdout)
-        self.assertIn("systemMessage", run("not json"))
+        self.assertIn("systemMessage", self.run_hook("not json"))
         self.on("autoresearch")
         payload = {"hook_event_name": "PreCompact", "session_id": "s1", "cwd": str(self.repo), "trigger": "auto"}
-        self.assertFalse(run(json.dumps(payload))["continue"])
+        self.assertFalse(self.run_hook(json.dumps(payload))["continue"])
+
+    def test_cli_hook_takes_its_repository_from_the_command_or_claude_project_dir(self):
+        self.on("autoresearch")
+        payload = json.dumps({"hook_event_name": "PreCompact", "session_id": "s1", "trigger": "auto",
+                              "cwd": str(self.repo.parent)})  # the session cd'd out of the project
+        self.assertEqual(self.run_hook(payload), {})
+        self.assertFalse(self.run_hook(payload, "--repo", self.repo)["continue"])
+        self.assertEqual(self.run_hook(payload, agent="claude"), {})
+        self.assertEqual(self.run_hook(payload, agent="claude", env={"CLAUDE_PROJECT_DIR": str(self.repo)})
+                         ["decision"], "block")
+        # Codex has no such variable: one inherited from a Claude Code shell must not count.
+        self.assertEqual(self.run_hook(payload, env={"CLAUDE_PROJECT_DIR": str(self.repo)}), {})
 
 
 if __name__ == "__main__":

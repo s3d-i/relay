@@ -33,6 +33,10 @@ def runtime_dir(repo):
     return common_dir(repo) / "research-relay"
 
 
+def toplevel(repo):
+    return Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
+
+
 def read_json(path, default=None):
     try:
         value = json.loads(Path(path).read_text())

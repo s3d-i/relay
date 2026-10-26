@@ -27,9 +27,13 @@ dialog; there is no separate hook trust step. The command for every event is
 python3 "$CLAUDE_PROJECT_DIR/.claude/skills/research-relay/scripts/relay.py" hook --agent claude
 ```
 
-`CLAUDE_PROJECT_DIR` is set for hook commands, so the file holds no absolute paths. Timeout
-5 s. Events: SessionStart, UserPromptSubmit, PostToolUse, PreCompact.
-`install --print` shows the JSON without writing.
+`CLAUDE_PROJECT_DIR` is set for hook commands, so the file holds no absolute paths. The hook
+also reads it as its repository: the payload's `cwd` follows every `cd` the session makes,
+into other repositories too (seen in 2.1.299 transcripts), while `CLAUDE_PROJECT_DIR` stays
+the project whose settings loaded the hook. Timeout 5 s. Events: SessionStart,
+UserPromptSubmit, PostToolUse, PreCompact. `install --print` shows the JSON without writing;
+`install --uninstall` removes the skill link and relay's entries, and deletes the settings
+file only when nothing else is left in it.
 
 `--window`: Claude Code reports its context window neither in the transcript nor in hook
 payloads (only the status line payload carries it), so the policy supplies it. Without it
