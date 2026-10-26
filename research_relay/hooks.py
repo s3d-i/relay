@@ -7,10 +7,11 @@ from . import autoresearch, context, policy, rhizome
 from .state import RelayError, lock
 
 
-def handle(payload, backend):
+def handle(payload, backend, repo=None):
+    """`repo` is the repository the hook was installed in; without it (older hook commands) the payload cwd."""
     event = payload.get("hook_event_name") if isinstance(payload, dict) else None
     try:
-        return _handle(payload, backend, event)
+        return _handle(payload, backend, event, repo)
     except Exception as exc:  # noqa: BLE001  the runner needs one JSON object whatever broke
         message = f"research-relay hook failed: {exc}"
         if event == "PreCompact":
@@ -19,12 +20,13 @@ def handle(payload, backend):
         return {"systemMessage": message}
 
 
-def _handle(payload, backend, event):
+def _handle(payload, backend, event, repo):
     if not isinstance(payload, dict):
         raise RelayError("hook input must be a JSON object")
     if event not in backend.HOOK_EVENTS:
         return {}
-    runtime = policy.locate(payload.get("cwd") or os.getcwd())
+    # The cwd follows the session's cd into other repositories; the installed repository does not.
+    runtime = policy.locate(repo or payload.get("cwd") or os.getcwd())
     active = policy.load(runtime) if runtime else None
     if not active or not active.get("active"):
         return {}  # unrelated repositories and switched-off ones see nothing

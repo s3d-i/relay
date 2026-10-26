@@ -4,7 +4,7 @@ import importlib
 import json
 from pathlib import Path
 
-from ..state import RelayError
+from ..state import RelayError, write_json
 
 
 NAMES = ("codex", "claude")
@@ -46,6 +46,24 @@ def merge_hooks(hooks, fragment):
                 del hooks[event]
             changed = True
     return changed
+
+
+def strip_hooks(path, current, changed=False):
+    """Remove our entries from a parsed hooks file and save it; a file left empty is deleted.
+
+    Foreign hooks and keys stay. `changed` says the caller already removed something of ours.
+    """
+    hooks = current.get("hooks", {})
+    changed = merge_hooks(hooks, {}) or changed
+    if not changed:
+        return {"hooks_file": str(path), "hooks_changed": False}
+    if not hooks:
+        current.pop("hooks", None)
+    if not current:
+        Path(path).unlink()
+        return {"hooks_file": str(path), "hooks_changed": True, "hooks_file_removed": True}
+    write_json(path, current)
+    return {"hooks_file": str(path), "hooks_changed": True}
 
 
 def installed(hooks, fragment):

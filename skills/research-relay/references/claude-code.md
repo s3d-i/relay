@@ -24,12 +24,15 @@ Hooks in `settings.local.json` run once the folder has passed Claude Code's work
 dialog; there is no separate hook trust step. The command for every event is
 
 ```
-python3 "$CLAUDE_PROJECT_DIR/.claude/skills/research-relay/scripts/relay.py" hook --agent claude
+python3 "$CLAUDE_PROJECT_DIR/.claude/skills/research-relay/scripts/relay.py" hook --agent claude --repo "$CLAUDE_PROJECT_DIR"
 ```
 
-`CLAUDE_PROJECT_DIR` is set for hook commands, so the file holds no absolute paths. Timeout
-5 s. Events: SessionStart, UserPromptSubmit, PostToolUse, PreCompact.
-`install --print` shows the JSON without writing.
+`CLAUDE_PROJECT_DIR` is set for hook commands, so the file holds no absolute paths. `--repo`
+ties the hook to the project whose settings loaded it: the payload's `cwd` follows every `cd`
+the session makes, into other repositories too. Timeout 5 s. Events: SessionStart,
+UserPromptSubmit, PostToolUse, PreCompact. `install --print` shows the JSON without writing;
+`install --uninstall` removes the skill link and relay's entries, and deletes the settings
+file only when nothing else is left in it.
 
 `--window`: Claude Code reports its context window neither in the transcript nor in hook
 payloads (only the status line payload carries it), so the policy supplies it. Without it

@@ -4,7 +4,7 @@ from pathlib import Path
 import shlex
 import sys
 
-from . import HOOK_EVENTS, hook_map, installed, last_value, merge_hooks
+from . import HOOK_EVENTS, hook_map, installed, last_value, merge_hooks, strip_hooks
 from ..state import RelayError, read_json, write_json
 
 
@@ -21,9 +21,10 @@ def hooks_file(repo):
     return Path(repo) / HOOKS_FILE
 
 
-def hook_command(launcher):
+def hook_command(launcher, repo):
     # Hooks run with the session cwd and no project variable: absolute paths only.
-    return shlex.join([sys.executable, str(Path(launcher).resolve()), "hook", "--agent", NAME])
+    return shlex.join([sys.executable, str(Path(launcher).resolve()), "hook", "--agent", NAME,
+                       "--repo", str(Path(repo).resolve())])
 
 
 def render_hooks(command):
@@ -39,6 +40,17 @@ def install_hooks(repo, command):
     if changed:
         write_json(path, current)
     return {"hooks_file": str(path), "hooks_changed": changed, "next": TRUST}
+
+
+def uninstall_hooks(repo):
+    path = hooks_file(repo)
+    current = read_json(path)
+    if current is None:
+        return {"hooks_file": str(path), "hooks_changed": False}
+    ours = "research-relay" in str(current.get("description", ""))
+    if ours:
+        del current["description"]  # a foreign description stays with the file
+    return strip_hooks(path, current, ours)
 
 
 def hooks_installed(repo, command):

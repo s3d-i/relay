@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from . import HOOK_EVENTS, hook_map, installed, last_value, merge_hooks
+from . import HOOK_EVENTS, hook_map, installed, last_value, merge_hooks, strip_hooks
 from ..state import RelayError, read_json, write_json
 
 
@@ -17,9 +17,11 @@ def hooks_file(repo):
     return Path(repo) / HOOKS_FILE
 
 
-def hook_command(launcher):
-    # CLAUDE_PROJECT_DIR is set for hook commands, so the same string works on every machine.
-    return f'python3 "$CLAUDE_PROJECT_DIR/{SKILL_DIR}/research-relay/scripts/relay.py" hook --agent {NAME}'
+def hook_command(launcher, repo):
+    # CLAUDE_PROJECT_DIR is set for hook commands, so the same string works on every machine. It also
+    # names the repository whose settings loaded the hook; the payload cwd follows every cd.
+    return (f'python3 "$CLAUDE_PROJECT_DIR/{SKILL_DIR}/research-relay/scripts/relay.py" hook --agent {NAME} '
+            '--repo "$CLAUDE_PROJECT_DIR"')
 
 
 def render_hooks(command):
@@ -33,6 +35,14 @@ def install_hooks(repo, command):
     if changed:
         write_json(path, current)
     return {"hooks_file": str(path), "hooks_changed": changed}
+
+
+def uninstall_hooks(repo):
+    path = hooks_file(repo)
+    current = read_json(path)
+    if current is None:
+        return {"hooks_file": str(path), "hooks_changed": False}
+    return strip_hooks(path, current)
 
 
 def hooks_installed(repo, command):

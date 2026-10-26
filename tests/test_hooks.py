@@ -88,6 +88,21 @@ class HookTests(HookCase):
                 self.assertEqual(self.hook(backend, "PreCompact", cwd=str(cwd)), {})
                 self.assertEqual(self.hook(backend, "PostToolUse", cwd=str(cwd)), {})
 
+    def test_installed_repo_wins_over_a_cwd_in_another_repo(self):
+        # The session cd'd into another repository; the hook still belongs to the one that installed it.
+        self.on("autoresearch")
+        other = self.repo.parent / "other"
+        other.mkdir()
+        subprocess.run(["git", "init", "-q", str(other)], check=True)
+        payload = {"hook_event_name": "PreCompact", "session_id": "s1", "cwd": str(other), "trigger": "auto"}
+        self.assertEqual(hooks.handle(payload, claude), {})  # older hook commands: the cwd decides
+        self.assertEqual(hooks.handle(payload, claude, str(self.repo))["decision"], "block")
+        self.write(claude_lines(FINAL))
+        payload.update(hook_event_name="PostToolUse", transcript_path=str(self.transcript))
+        self.assertIn("Begin closeout", hooks.handle(payload, claude, str(self.repo))
+                      ["hookSpecificOutput"]["additionalContext"])
+        self.assertFalse((other / ".git/research-relay").exists())
+
     def test_policy_off_returns_empty(self):
         self.on("autoresearch")
         policy.disable(self.runtime)

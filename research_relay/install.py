@@ -48,16 +48,18 @@ def install(repo, agent, uninstall=False):
     repo = toplevel(repo)
     target, installed = skill_link(repo, backend)
     if uninstall:
+        # Hooks first: an unreadable hooks file stops here with nothing changed.
+        result = backend.uninstall_hooks(repo)
         if installed:
             target.unlink()
-        return {"agent": agent, "skill": str(target), "installed": False,
-                "retained": "ignore rules, hooks file, notes and policy"}
+        return {"agent": agent, "skill": str(target), "installed": False, **result,
+                "retained": "ignore rules, foreign hooks, notes and policy"}
     rules = ignore_rules(backend)
     gitignore_changed = patch_gitignore(repo, rules)
     if not installed:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.symlink_to(SKILL, target_is_directory=True)
-    result = backend.install_hooks(repo, backend.hook_command(LAUNCHER))
+    result = backend.install_hooks(repo, backend.hook_command(LAUNCHER, repo))
     tracked = git(repo, "ls-files", "-z", "--", *(rule.strip("/") for rule in rules))
     notes = backend.warnings(repo, None)
     if tracked:
@@ -84,7 +86,7 @@ def hooks_status(repo):
         backend = backends.get(name)
         value = {"file": str(backend.hooks_file(repo))}
         try:
-            value["installed"] = backend.hooks_installed(repo, backend.hook_command(LAUNCHER))
+            value["installed"] = backend.hooks_installed(repo, backend.hook_command(LAUNCHER, repo))
         except PermissionError:
             value.update(installed=None, error="Hook settings are not readable in this environment.")
         result[name] = value
