@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import subprocess
 import sys
 
@@ -38,7 +39,8 @@ def parser():
     q.add_argument("--repo", default=".")
     q = sub.add_parser("hook", help="hook entry point: payload JSON on stdin, output JSON on stdout")
     q.add_argument("--agent", required=True, **agent)
-    q.add_argument("--repo", help="the repository the hook belongs to (default: the payload cwd)")
+    q.add_argument("--repo", help="the repository the hook belongs to (default: $CLAUDE_PROJECT_DIR for claude, "
+                                  "else the payload cwd)")
     q = sub.add_parser("notes", help="init | status | links | commit on the relay-notes worktree")
     q.add_argument("action", choices=("init", "status", "links", "commit"))
     q.add_argument("--repo", default=".")
@@ -92,7 +94,7 @@ def hook(agent, repo):
         payload = json.load(sys.stdin)
     except ValueError as exc:
         payload = f"unreadable payload: {exc}"  # handle() reports a non-object as a failure
-    return hooks.handle(payload, backend, repo)
+    return hooks.handle(payload, backend, repo or backend.project_dir(os.environ))
 
 
 def main(argv=None):

@@ -27,6 +27,10 @@ def hook_command(launcher, repo):
                        "--repo", str(Path(repo).resolve())])
 
 
+def project_dir(environ):
+    return None  # Codex sets no project variable; the command carries --repo
+
+
 def render_hooks(command):
     return {"description": DESCRIPTION, "hooks": hook_map(command)}
 

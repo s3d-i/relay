@@ -18,10 +18,14 @@ def hooks_file(repo):
 
 
 def hook_command(launcher, repo):
-    # CLAUDE_PROJECT_DIR is set for hook commands, so the same string works on every machine. It also
-    # names the repository whose settings loaded the hook; the payload cwd follows every cd.
-    return (f'python3 "$CLAUDE_PROJECT_DIR/{SKILL_DIR}/research-relay/scripts/relay.py" hook --agent {NAME} '
-            '--repo "$CLAUDE_PROJECT_DIR"')
+    # CLAUDE_PROJECT_DIR is set for hook commands, so the same string works on every machine.
+    # The hook reads it as its repository too (see project_dir), so commands need no --repo.
+    return f'python3 "$CLAUDE_PROJECT_DIR/{SKILL_DIR}/research-relay/scripts/relay.py" hook --agent {NAME}'
+
+
+def project_dir(environ):
+    """The project whose settings loaded the hook; the payload cwd follows every cd the session makes."""
+    return environ.get("CLAUDE_PROJECT_DIR") or None
 
 
 def render_hooks(command):

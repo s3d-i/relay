@@ -100,9 +100,9 @@ hook entries, and deletes the hooks file only when nothing else is left in it; f
 ignore rules, notes and policy stay. After an upgrade, run `install` again: `status` reports
 `installed: false` while the hooks file holds an older command.
 
-Each hook command names the project it was installed in (`hook --repo ...`), and the hook
-reads that project's policy. Commands from before relay did this use the payload's `cwd`;
-Claude Code's follows the session into whatever repository it last `cd`'d to.
+A hook reads the policy of the project it was installed in: `CLAUDE_PROJECT_DIR` for Claude
+Code, `hook --repo <project>` in the Codex command. Without either it falls back to the payload's
+`cwd`, which in Claude Code follows the session into whatever repository it last `cd`'d to.
 
 `on` replaces the policy: omitted options return to their defaults, and a bare `on` means
 `--mode rhizome`. It takes `--mode`, `--agent`, `--window N`, `--compact-limit N`,
@@ -124,8 +124,9 @@ reference docs.
 - Skill link: `<project>/.claude/skills/research-relay`. Invoke with `/research-relay`.
 - Hooks: merged into `<project>/.claude/settings.local.json`; other keys are kept. No hook trust
   step beyond Claude Code's workspace trust.
-- Command: `python3 "$CLAUDE_PROJECT_DIR/.claude/skills/research-relay/scripts/relay.py" hook --agent claude --repo "$CLAUDE_PROJECT_DIR"`.
-  No absolute paths, so the file works on every machine.
+- Command: `python3 "$CLAUDE_PROJECT_DIR/.claude/skills/research-relay/scripts/relay.py" hook --agent claude`.
+  No absolute paths, so the file works on every machine. The hook takes its repository from
+  `CLAUDE_PROJECT_DIR`.
 - Pass `--window`; Claude Code does not report it.
 - Upgrading from an older relay: `install` used to write `"autoCompactEnabled": false` into
   that file. relay no longer writes or removes it; `status` warns while it is there. Delete it
