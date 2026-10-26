@@ -125,6 +125,32 @@ class InstallTests(RepoCase):
         self.assertEqual((code, value["hooks_changed"]), (0, True))
         self.assertEqual(json.loads(hooks_file.read_text()), {"description": "team hooks", "hooks": {"Stop": [foreign]}})
 
+    def test_status_tells_old_and_idle_hooks_apart(self):
+        hooks_file = self.repo / ".codex/hooks.json"
+        hooks_file.parent.mkdir()
+        stale = [{"hooks": [{"type": "command", "command": OLD_CODEX_COMMAND}]}]
+        hooks_file.write_text(json.dumps({"hooks": {"PostToolUse": stale}}))
+        code, value = self.cli("status", "--repo", self.repo)
+        self.assertEqual(value["hooks"]["codex"], {"file": str(hooks_file), "installed": True, "current": False})
+        self.assertEqual(value["hooks"]["claude"]["installed"], False)
+        text = " ".join(value["warnings"])
+        self.assertIn("older command; run install --agent codex again", text)
+        self.assertIn("installed but relay is off here", text)
+        self.cli("install", "--repo", self.repo, "--agent", "codex")
+        self.cli("on", "--repo", self.repo, "--agent", "codex", "--compact-limit", 600000)
+        code, value = self.cli("status", "--repo", self.repo)
+        self.assertEqual((value["hooks"]["codex"]["current"], value["warnings"]), (True, []))
+
+    def test_uninstall_keeps_a_foreign_skill_and_names_other_agents_hooks(self):
+        self.cli("install", "--repo", self.repo, "--agent", "codex")
+        foreign = self.repo / ".claude/skills/research-relay"
+        foreign.mkdir(parents=True)
+        (foreign / "SKILL.md").write_text("someone else's skill")
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "claude", "--uninstall")
+        self.assertEqual((code, value["other_agents_hooks"]), (0, ["codex"]))
+        self.assertIn("left in place", value["skill_kept"])
+        self.assertEqual((foreign / "SKILL.md").read_text(), "someone else's skill")
+
     def test_uninstall_removes_a_stale_codex_hooks_file(self):
         # What an earlier relay left in a repository the notes had moved away from.
         stale = [{"hooks": [{"type": "command", "command": OLD_CODEX_COMMAND, "timeout": 5}]}]

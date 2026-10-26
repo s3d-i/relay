@@ -41,9 +41,13 @@ def parser():
     q.add_argument("--agent", required=True, **agent)
     q.add_argument("--repo", help="the repository the hook belongs to (default: $CLAUDE_PROJECT_DIR for claude, "
                                   "else the payload cwd)")
-    q = sub.add_parser("notes", help="init | status | links | commit on the relay-notes worktree")
-    q.add_argument("action", choices=("init", "status", "links", "commit"))
+    q = sub.add_parser("notes", help="init | status | links | commit on the relay-notes worktree; attach | detach "
+                                     "to keep this repository's notes in another repository")
+    q.add_argument("action", choices=("init", "status", "links", "commit", "attach", "detach"))
     q.add_argument("--repo", default=".")
+    q.add_argument("--to", metavar="REPO", help="attach: the repository that holds the notes (default: --repo)")
+    q.add_argument("--branch", help="attach: the notes branch there, ending in relay-notes "
+                                    "(default: that repository's <git user>/relay-notes)")
     q.add_argument("--path", action="append", default=[],
                    help="reviewed file to commit, or one links query file (default RESEARCH.md)")
     q.add_argument("-m", "--message", default="")
@@ -57,9 +61,13 @@ def status(repo):
     runtime = runtime_dir(repo)
     current = policy.load(runtime)
     active = bool(current and current.get("active"))
+    try:
+        found = notes.inspect(repo)
+    except RelayError as exc:  # a notes problem must not hide the policy
+        found = {"error": str(exc)}
     return {"policy": current, "active": active, "mode": policy.mode(current) if active else None,
-            "warnings": install.warnings(repo, current), "hooks": install.hooks_status(repo),
-            "sessions": policy.sessions(runtime), "notes": notes.inspect(repo)}
+            "warnings": install.warnings(repo, current) + notes.warnings(repo), "hooks": install.hooks_status(repo),
+            "sessions": policy.sessions(runtime), "notes": found}
 
 
 def switch_on(args):
@@ -74,12 +82,18 @@ def switch_on(args):
 
 
 def notes_command(args):
+    if (args.to or args.branch) and args.action != "attach":
+        raise RelayError("--to and --branch belong to notes attach.")
+    if args.action == "attach":
+        return notes.attach(args.repo, args.to, args.branch)
+    if args.action == "detach":
+        return notes.detach(args.repo)
     if args.action == "init":
         return notes.init(args.repo, args.source, args.fresh)
     if args.action == "status":
         return notes.inspect(args.repo)
     if args.action == "links":
-        path = notes.find(args.repo)
+        path = notes.locate(args.repo)
         if path is None:
             raise RelayError("No notes worktree. Run notes status/init first.")
         if len(args.path) > 1:

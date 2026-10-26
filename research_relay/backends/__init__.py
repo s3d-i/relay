@@ -66,6 +66,12 @@ def strip_hooks(path, current, changed=False):
     return {"hooks_file": str(path), "hooks_changed": True}
 
 
+def present(hooks):
+    """Any relay entry at all, whatever its command or event."""
+    return isinstance(hooks, dict) and any(ours(entry) for entries in hooks.values() if isinstance(entries, list)
+                                           for entry in entries)
+
+
 def installed(hooks, fragment):
     return isinstance(hooks, dict) and all(
         all(entry in hooks.get(event, []) for entry in entries) for event, entries in fragment.items())

@@ -1,13 +1,22 @@
-"""An ordinary notes branch and isolated worktree, with explicit-path commits."""
+"""An ordinary notes branch and isolated worktree, with explicit-path commits.
 
+The notes live in a home repository: the project itself, or the repository and branch its
+pointer names (`notes attach`). The worktree, its lock and the private-input exclude belong to
+the home; the policy and session state stay with the project.
+"""
+
+import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 
-from .state import RelayError, common_dir, git, lock, runtime_dir
+from .policy import now
+from .state import RelayError, common_dir, git, lock, read_json, runtime_dir, toplevel, write_json
 
 
 SUFFIX = "relay-notes"
+POINTER = "home.json"
 TEMPLATES = Path(__file__).resolve().parent.parent / "skills/research-relay/assets"
 PRIVATE_ARTIFACTS = Path("artifacts/private")
 PRIVATE_INPUTS = PRIVATE_ARTIFACTS / "human-inputs"
@@ -32,10 +41,10 @@ def private_status(path):
             "private_inputs_ignored": result.returncode == 0, "tracked_private_artifacts": tracked}
 
 
-def protect_private_inputs(repo, path):
+def protect_private_inputs(path):
     # The independent notes branch does not inherit the code branch's .gitignore.
-    # info/exclude is local and shared by the repository's linked worktrees.
-    exclude = common_dir(repo) / "info/exclude"
+    # info/exclude is local and shared by the linked worktrees of the notes' own repository.
+    exclude = common_dir(path) / "info/exclude"
     existing = exclude.read_text() if exclude.exists() else ""
     if PRIVATE_IGNORE not in existing.splitlines():
         exclude.parent.mkdir(parents=True, exist_ok=True)
@@ -78,65 +87,155 @@ def _exists(repo, ref):
     return True
 
 
-def candidates(repo):
-    """Local and remote-tracking notes branches other than this author's own local branch."""
-    own = "refs/heads/" + branch_name(repo)
+def candidates(repo, own=None, exact=False):
+    """Local and remote-tracking notes branches other than the local `own` (default: this author's).
+
+    exact: only remote-tracking copies of `own`. A home that holds several notebooks keeps
+    other notebooks' branches, which are not continuations of this one.
+    """
+    own = own or branch_name(repo)
     raw = git(repo, "for-each-ref", "--format=%(refname)%00%(refname:short)%00%(objectname:short)%00"
               "%(committerdate:short)%00%(subject)", "refs/heads", "refs/remotes")
     found = []
     for line in raw.splitlines():
         ref, short, commit, date, subject = line.split("\0")
-        if ref != own and is_notes_branch(short):
+        if ref == "refs/heads/" + own:
+            continue
+        if exact:
+            keep = ref.startswith("refs/remotes/") and short.split("/", 1)[-1] == own
+        else:
+            keep = is_notes_branch(short)
+        if keep:
             found.append({"ref": short, "commit": commit, "date": date, "subject": subject})
     return found
 
 
-def find(repo):
+def _accessible(path, common):
+    try:
+        return path.is_dir() and common_dir(path).samefile(common)
+    except (OSError, RelayError):
+        return False
+
+
+def _same(a, b):
+    try:
+        return Path(a).samefile(b)
+    except OSError:
+        return False
+
+
+def worktrees(repo):
+    """{branch: path} of this repository's notes worktrees that this environment can reach."""
     # -z preserves spaces, newlines and non-ASCII names without Git path quoting.
     raw = git(repo, "worktree", "list", "--porcelain", "-z")
-    own, current, found = branch_name(repo), None, {}
+    current, found = None, {}
     common = common_dir(repo)
-
-    def accessible(path):
-        try:
-            return path.is_dir() and common_dir(path).samefile(common)
-        except (OSError, RelayError):
-            return False
-
     for field in raw.split("\0"):
         if field.startswith("worktree "):
             current = Path(field[9:])
         elif field.startswith("branch refs/heads/") and is_notes_branch(field[18:]):
-            if current is not None and accessible(current):
+            if current is not None and _accessible(current, common):
                 found[field[18:]] = current
     # A shared Git registration can name another host or mount namespace. The
     # conventional local checkout is usable only when it belongs to this repo.
     local = runtime_dir(repo) / "notes"
-    if accessible(local):
+    if _accessible(local, common):
         branch = git(local, "branch", "--show-current")
         if is_notes_branch(branch):
             found.setdefault(branch, local)
+    return found
+
+
+def find(repo, branch=None):
+    """The notes worktree of `branch` in this repository, or by discovery when no branch is chosen."""
+    found = worktrees(repo)
+    runtime = runtime_dir(repo)
+    if branch is not None:
+        local = runtime / "branches" / branch
+        if branch not in found and _accessible(local, common_dir(repo)) \
+                and git(local, "branch", "--show-current") == branch:
+            return local  # registered under a path this environment cannot see
+        return found.get(branch)
+    own = branch_name(repo)
     if own in found or len(found) < 2:
         return found.get(own) or next(iter(found.values()), None)
+    # A home with several notebooks: the conventional checkout holds this repository's own notes.
+    for path in found.values():
+        if _same(path, runtime / "notes"):
+            return path
     raise RelayError("Several notes worktrees and none on this author's branch; choose one: "
                      + ", ".join(f"{name} at {path}" for name, path in found.items()))
+
+
+def worktree_path(repo, branch):
+    """Where init checks out `branch`: research-relay/notes for this author's branch, else branches/<branch>."""
+    runtime = runtime_dir(repo)
+    local = runtime / "notes"
+    if branch == branch_name(repo) and not _accessible(local, common_dir(repo)):
+        return local  # free, or a stray directory that init refuses to touch
+    # Branch names never nest (git refuses a/relay-notes beside a/relay-notes/b), so neither do these.
+    return runtime / "branches" / branch
+
+
+def pointer(runtime):
+    """The project's notes pointer, or None when the project keeps its own notes."""
+    path = Path(runtime) / POINTER
+    value = read_json(path)
+    if value is not None and not (isinstance(value.get("home"), str) and isinstance(value.get("branch"), str)):
+        raise RelayError(f"Invalid notes pointer (preserved): {path}")
+    return value
+
+
+def home_path(runtime, value):
+    # Relative to the project's git common dir, so the same pointer holds wherever the workspace is mounted.
+    return (Path(runtime).parent / value["home"]).resolve()
+
+
+def where(runtime):
+    """The pointer's home and branch for hook texts, without running Git; None without a pointer."""
+    value = pointer(runtime)
+    if value is None:
+        return None
+    home = home_path(runtime, value)
+    return {"home": str(home), "branch": value["branch"], "reachable": (home / ".git").exists()}
+
+
+def resolve(repo):
+    """(home, branch): where this project's notes live; branch is None when it keeps its own notes."""
+    runtime = runtime_dir(repo)
+    value = pointer(runtime)
+    if value is None:
+        return Path(repo), None
+    home = home_path(runtime, value)
+    try:
+        common_dir(home)
+    except (RelayError, OSError):
+        raise RelayError(f"The notes home {home}, named by {runtime / POINTER}, is not a repository here. "
+                         "Run notes attach again on this machine, or notes detach.") from None
+    return home, value["branch"]
+
+
+def locate(repo):
+    home, branch = resolve(repo)
+    return find(home, branch)
 
 
 def init(repo, source=None, fresh=False):
     if source and fresh:
         raise RelayError("Pass --from or --fresh, not both.")
-    runtime = runtime_dir(repo)
+    home, chosen = resolve(repo)
+    runtime = runtime_dir(home)
     with lock(runtime / "notes.lock"):
-        path = find(repo)
+        path = find(home, chosen)
         if path is None:
-            path = runtime / "notes"
+            branch = chosen or branch_name(home)
+            path = worktree_path(home, branch)
             if path.exists():
                 raise RelayError(f"Unregistered notes directory exists; preserve and inspect it: {path}")
-            branch = branch_name(repo)
-            if not _exists(repo, "refs/heads/" + branch):
-                found = candidates(repo)
+            if not _exists(home, "refs/heads/" + branch):
+                found = candidates(home, branch, exact=chosen is not None)
                 if source:
-                    commit = git(repo, "rev-parse", "--verify", source + "^{commit}")
+                    commit = git(home, "rev-parse", "--verify", source + "^{commit}")
                 elif found and not fresh:
                     # Continuing someone's notes or starting a competing account is the human's call.
                     raise RelayError(
@@ -145,50 +244,72 @@ def init(repo, source=None, fresh=False):
                         + f". Ask the human, then run notes init --from <ref> to continue one as {branch}, "
                         "or notes init --fresh to start empty.")
                 else:
-                    tree = git(repo, "mktree", input="")
-                    commit = git(repo, "commit-tree", tree, "-m", "Initialize independent research notes")
+                    tree = git(home, "mktree", input="")
+                    commit = git(home, "commit-tree", tree, "-m", "Initialize independent research notes")
                 # Compare-and-create: do not overwrite a concurrently created branch.
-                git(repo, "update-ref", "refs/heads/" + branch, commit, "0" * len(commit))
-                if source and _exists(repo, "refs/remotes/" + source):
+                git(home, "update-ref", "refs/heads/" + branch, commit, "0" * len(commit))
+                if source and _exists(home, "refs/remotes/" + source):
                     try:  # tracking only reports divergence; relay never pushes
-                        git(repo, "branch", "--set-upstream-to=" + source, branch)
+                        git(home, "branch", "--set-upstream-to=" + source, branch)
                     except RelayError:
                         pass
-            git(repo, "worktree", "add", str(path), branch)
-        privacy = protect_private_inputs(repo, path)
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            git(home, "worktree", "add", str(path), branch)
+        privacy = protect_private_inputs(path)
         entry = path / "RESEARCH.md"
         created = not entry.exists()
         if created:
             # x mode refuses races and never replaces an existing research document.
             with entry.open("x") as out:
                 out.write((TEMPLATES / "RESEARCH.md").read_text())
-        return {"notes": str(path), "branch": git(path, "branch", "--show-current"), "entry_created": created,
+        return {"notes": str(path), "home": str(toplevel(home)), "attached": chosen is not None,
+                "branch": git(path, "branch", "--show-current"), "entry_created": created,
                 "status": git(path, "status", "--short"), "committed": False, **privacy}
 
 
+def _tracking(path, branch):
+    """The notes branch's upstream and that remote's URL. relay never pushes and cannot tell a public remote."""
+    upstream, remote = git(path, "for-each-ref", "--format=%(upstream:short)%00%(upstream:remotename)",
+                           "refs/heads/" + branch).partition("\0")[::2]
+    if not upstream:
+        return {"upstream": None, "remote_url": None}
+    try:
+        url = git(path, "remote", "get-url", remote) if remote else None
+    except RelayError:
+        url = None
+    return {"upstream": upstream, "remote_url": url}
+
+
 def inspect(repo):
-    path = find(repo)
+    home, chosen = resolve(repo)
+    place = {"home": str(toplevel(home)), "attached": chosen is not None}
+    path = find(home, chosen)
     if path is None:
-        return {"notes": None, "branch": branch_name(repo), "candidates": candidates(repo),
+        branch = chosen or branch_name(home)
+        return {"notes": None, **place, "branch": branch,
+                "candidates": candidates(home, branch, exact=chosen is not None),
                 "hint": "Align research intent before notes init. When candidates exist, the human decides "
                         "between notes init --from <ref> and notes init --fresh."}
-    return {"notes": str(path), "branch": git(path, "branch", "--show-current"),
+    branch = git(path, "branch", "--show-current")
+    return {"notes": str(path), **place, "branch": branch,
             "status": git(path, "status", "--short"),
             "head": git(path, "rev-parse", "HEAD"),
-            "entry_exists": (path / "RESEARCH.md").is_file(), **private_status(path)}
+            "entry_exists": (path / "RESEARCH.md").is_file(), **_tracking(path, branch), **private_status(path)}
 
 
 def commit(repo, paths, message):
-    path = find(repo)
+    home, chosen = resolve(repo)
+    path = find(home, chosen)
     if path is None:
         raise RelayError("No notes worktree. Run notes status/init first.")
     if not paths or not message.strip():
         raise RelayError("Pass each reviewed notes file with --path and a commit message.")
-    with lock(runtime_dir(repo) / "notes.lock"):
-        if not is_notes_branch(git(path, "branch", "--show-current")):
+    with lock(runtime_dir(home) / "notes.lock"):
+        current = git(path, "branch", "--show-current")
+        if (current != chosen) if chosen else not is_notes_branch(current):
             raise RelayError("Notes checkout changed branch; refusing to commit.")
-        protect_private_inputs(repo, path)
-        chosen = []
+        protect_private_inputs(path)
+        chosen_paths = []
         for name in paths:
             rel = Path(name)
             if rel.is_absolute() or ".." in rel.parts or name.startswith(":") or rel.as_posix() == ".":
@@ -197,11 +318,11 @@ def commit(repo, paths, message):
                 raise RelayError("Private human input artifacts must never be committed; commit only summaries and references.")
             if not (path / rel).exists():
                 git(path, "ls-files", "--error-unmatch", "--", str(rel))  # a deletion is a valid change
-            chosen.append(str(rel))
+            chosen_paths.append(str(rel))
         staged = set(git(path, "diff", "--cached", "--name-only", "-z").split("\0")) - {""}
-        if staged - set(chosen):
+        if staged - set(chosen_paths):
             raise RelayError("Unrelated staged notes exist; inspect them. Nothing was reset or committed.")
-        git(path, "add", "--", *chosen)
+        git(path, "add", "--", *chosen_paths)
         staged_after = git(path, "diff", "--cached", "--name-only")
         if not staged_after:
             return {"status": "unchanged", "notes": str(path)}
@@ -209,3 +330,141 @@ def commit(repo, paths, message):
         git(path, "commit", "-m", message)
         return {"status": "committed", "notes": str(path), "commit": git(path, "rev-parse", "HEAD"),
                 "remaining": git(path, "status", "--short"), "pushed": False}
+
+
+def _contained(home, commit, branch):
+    # A commit the home does not have is not contained; nothing is fetched to find out.
+    result = subprocess.run(["git", "-C", str(home), "merge-base", "--is-ancestor", commit, "refs/heads/" + branch],
+                            capture_output=True, text=True, timeout=30)
+    return result.returncode == 0
+
+
+def _remote_url(repo, ref):
+    try:
+        return git(repo, "remote", "get-url", ref.split("/", 1)[0])
+    except RelayError:
+        return None
+
+
+def left_behind(project, home, branch):
+    """What this project still holds of its own notes, judged against `branch` in `home`.
+
+    worktrees and stranded (local notes branches, or their upstreams, with commits the home's
+    branch lacks) would leave notes behind; contained and remote are only reported.
+    """
+    result = {"worktrees": [], "stranded": [], "contained": [], "remote": []}
+    for name, path in worktrees(project).items():
+        private = path / PRIVATE_ARTIFACTS
+        result["worktrees"].append({"path": str(path), "branch": name, "status": git(path, "status", "--short"),
+                                    "private_files": sum(1 for p in private.rglob("*") if p.is_file())
+                                    if private.is_dir() else 0})
+    raw = git(project, "for-each-ref", "--format=%(refname)%00%(refname:short)%00%(objectname)%00%(upstream)",
+              "refs/heads", "refs/remotes")
+    rows = [line.split("\0") for line in raw.splitlines()]
+    upstreams = {upstream for ref, short, _, upstream in rows if ref.startswith("refs/heads/") and
+                 is_notes_branch(short) and upstream}
+    for ref, short, commit, _ in rows:
+        local, tracked = ref.startswith("refs/heads/"), ref in upstreams
+        if not (is_notes_branch(short) and (local or ref.startswith("refs/remotes/")) or tracked):
+            continue
+        entry = {"ref": short, "commit": commit[:12]}
+        if local or tracked:
+            result["contained" if _contained(home, commit, branch) else "stranded"].append(entry)
+        if not local:
+            result["remote"].append({**entry, "url": _remote_url(project, short)})
+    return result
+
+
+def _left_text(left, home, branch):
+    """One message per kind of leftover, for status warnings and attach refusals."""
+    where = f"{branch} in {home}"
+    texts = []
+    for tree in left["worktrees"]:
+        changed = len(tree["status"].splitlines())
+        texts.append(f"This repository still has its own notes worktree at {tree['path']} ({tree['branch']}, "
+                     f"{changed} changed files, {tree['private_files']} private input files). Bring what it holds "
+                     f"into {where}, copy artifacts/private/ by hand, then remove it with git worktree remove, "
+                     "which deletes ignored files: copy the private inputs first.")
+    if left["stranded"]:
+        texts.append("Notes branches here hold commits that " + where + " lacks: "
+                     + ", ".join(f"{e['ref']} ({e['commit']})" for e in left["stranded"])
+                     + f". Merge them there first, for example git -C {shlex.quote(str(home))} fetch "
+                     "<this repository> <branch> and a merge of FETCH_HEAD in the home's notes worktree.")
+    if left["contained"]:
+        texts.append("Notes branches here are already contained in " + where + ": "
+                     + ", ".join(e["ref"] for e in left["contained"]) + ". Delete the local ones with git branch -D.")
+    if left["remote"]:
+        texts.append("Remote notes branches remain: "
+                     + ", ".join(f"{e['ref']} ({e['url'] or 'unknown URL'})" for e in left["remote"])
+                     + ". relay cannot tell whether a remote is public; if one is, delete the branch there.")
+    return texts
+
+
+def _check_branch(repo, branch):
+    try:
+        git(repo, "check-ref-format", "--branch", branch)
+    except RelayError:
+        raise RelayError(f"Invalid branch name: {branch!r}") from None
+    if not is_notes_branch(branch):
+        raise RelayError("--branch must end in relay-notes, for example <user>/<topic>/relay-notes: notes branches "
+                         "stay recognizable, and a code branch cannot be chosen by mistake.")
+
+
+def attach(repo, to=None, branch=None):
+    """Keep this project's notes on `branch` of `to` (default: this repository). Policy and sessions stay here."""
+    project = toplevel(repo)
+    home = toplevel(to) if to else project
+    same = common_dir(home) == common_dir(project)
+    if same and branch is None:
+        raise RelayError("Pass --to another repository, or --branch to keep the notes here on a chosen branch.")
+    if branch is not None:
+        _check_branch(home, branch)
+    if not same and pointer(runtime_dir(home)) is not None:
+        raise RelayError(f"{home} keeps its notes elsewhere (notes attach); attach to that repository instead.")
+    branch = branch or branch_name(home)  # recorded, so a later user.name change does not move the notes
+    runtime = runtime_dir(project)
+    with lock(runtime / "notes.lock"):
+        previous = pointer(runtime)
+        left = None if same else left_behind(project, home, branch)
+        if left and (left["worktrees"] or left["stranded"]):
+            texts = _left_text({**left, "contained": [], "remote": []}, home, branch)
+            raise RelayError(" ".join(texts) + " relay attaches only when this repository's notes would not be "
+                             "left behind. Nothing was changed.")
+        write_json(runtime / POINTER, {"version": 1, "home": os.path.relpath(home, runtime.parent),
+                                       "branch": branch, "since": now()})
+    report = _left_text(left, home, branch) if left else []
+    return {"project": str(project), "home": str(home), "branch": branch, "pointer": str(runtime / POINTER),
+            **({"previous": previous} if previous else {}), **({"left_behind": report} if report else {}),
+            "notes": _quiet(inspect, project)}
+
+
+def detach(repo):
+    runtime = runtime_dir(repo)
+    path = runtime / POINTER
+    with lock(runtime / "notes.lock"):
+        try:
+            previous = pointer(runtime)
+        except RelayError as exc:
+            previous = {"invalid": str(exc)}  # detach is how a broken pointer goes away
+        if path.exists():
+            path.unlink()
+    return {"detached": previous is not None, **({"previous": previous} if previous else {}),
+            "notes": _quiet(inspect, repo)}
+
+
+def warnings(repo):
+    """Status warnings: a pointer that does not resolve, or notes left behind in a project attached elsewhere."""
+    try:
+        home, chosen = resolve(repo)
+        if chosen is None or common_dir(home) == common_dir(repo):
+            return []
+        return _left_text(left_behind(repo, home, chosen), home, chosen)
+    except RelayError as exc:
+        return [str(exc)]
+
+
+def _quiet(function, *args):
+    try:
+        return function(*args)
+    except RelayError as exc:
+        return {"error": str(exc)}

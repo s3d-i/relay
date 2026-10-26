@@ -97,8 +97,9 @@ hooks file and `/artifacts/private/`, and writes or merges the hooks file. It re
 earlier entries, including those for events it no longer uses, and never removes hooks it did
 not write. `--print` only prints the hooks JSON. `--uninstall` removes the link and relay's
 hook entries, and deletes the hooks file only when nothing else is left in it; foreign hooks,
-ignore rules, notes and policy stay. After an upgrade, run `install` again: `status` reports
-`installed: false` while the hooks file holds an older command.
+ignore rules, notes and policy stay. A foreign skill at the link's place is left alone, and
+relay hooks still installed for the other agent are named. After an upgrade, run `install`
+again: `status` reports `current: false` while the hooks file holds an older command.
 
 A hook reads the policy of the project it was installed in: `CLAUDE_PROJECT_DIR` for Claude
 Code, `hook --repo <project>` in the Codex command. Without either it falls back to the payload's
@@ -111,9 +112,11 @@ the mode changed. `--mode autoresearch` needs `--agent`, and `--window` with `--
 a mode that blocks compaction must be able to deliver its closeout. A policy file written
 before modes existed is read as `autoresearch` until `on` is run again.
 
-`status` prints the policy, the mode, warnings, whether the hooks file is present and matches,
-per-session state (last usage with the thresholds it was judged against, `baseline`,
-`final_sent`), and the notes worktree; exit 0 when active, 2 when not.
+`status` prints the policy, the mode, warnings, the hooks per agent (`installed`: any relay
+entry; `current`: the entries this relay writes), per-session state (last usage with the
+thresholds it was judged against, `baseline`, `final_sent`), and the notes; exit 0 when
+active, 2 when not. It warns about hooks with an older command, hooks installed while relay is
+off (left behind after the notes moved?), and notes left behind in an attached repository.
 
 The runtime does not verify the host. Correctness rests on the pinned versions below and on
 you having trusted the hooks once. If you upgrade either app, re-check the facts in the
@@ -164,10 +167,44 @@ remote-tracking, named `relay-notes` or `*/relay-notes`, it stops and lists them
 between `--from <ref>`, which starts your branch at that commit, and `--fresh`, which starts
 from an empty tree. With no candidates it starts empty. It then adds a worktree at
 `<git-common-dir>/research-relay/notes`, appends `/artifacts/private/` to `info/exclude`, and
-writes a template `RESEARCH.md` only if none exists. `status` shows the worktree, uncommitted
-changes, `private_inputs_ignored` and `tracked_private_artifacts`. `links` lists one file's
-outgoing links and backlinks. `commit` commits explicit paths only, rejects `artifacts/private/`,
+writes a template `RESEARCH.md` only if none exists. `status` shows the worktree, its `home`
+repository, uncommitted changes, the branch's `upstream` and `remote_url`,
+`private_inputs_ignored` and `tracked_private_artifacts`. `links` lists one file's outgoing
+links and backlinks. `commit` commits explicit paths only, rejects `artifacts/private/`,
 refuses when unrelated files are staged, and never pushes.
+
+### Notes in another repository
+
+A code repository, public perhaps, can keep its notes in another repository, private, on a
+branch you choose. Run on each machine:
+
+```sh
+relay notes attach --repo /path/to/project --to /path/to/notes-home   # [--branch <name>/relay-notes]
+relay notes detach --repo /path/to/project
+```
+
+`attach` writes a pointer to `<project's git-common-dir>/research-relay/home.json`. The path in
+it is relative to that directory, so it holds wherever the workspace is mounted. From then on,
+every notes command run with `--repo <project>` works on the home's branch. That branch's
+worktree, its lock and the private-input exclude belong to the home. The project keeps its own
+policy and session state: install and switch relay on in the project, where the sessions start.
+Several projects can share one home and branch, or each take its own branch there.
+
+- The branch defaults to the home's `<user>/relay-notes`. `--branch` must end in `relay-notes`
+  (`s3d-i/beatmap/relay-notes`), which keeps notes branches recognizable and rules out a code
+  branch. It is recorded, so a later `user.name` change does not move the notes.
+- The home's own branch gets `research-relay/notes`; any other gets
+  `research-relay/branches/<branch>`. With a chosen branch, `init`'s candidates are only remote
+  copies of that branch.
+- `attach` refuses while the project still holds notes the home would not get: a notes worktree
+  of its own, or a local notes branch (or its upstream) with commits the home's branch lacks.
+  Move them first. `git worktree remove` deletes ignored files, so copy `artifacts/private/`
+  by hand. It also refuses a home that is itself attached elsewhere.
+- What may stay is reported: local notes branches already in the home, and remote notes
+  branches with their URL. relay cannot tell whether a remote is public; delete such a branch
+  yourself if it is. `status` repeats these warnings until they are gone.
+- Hooks tell the session where the notes are, and tell an open session when they moved.
+- The agent's sandbox must be able to write the home's notes worktree.
 
 Original human wording (prompts, answers, option selections) stays in
 `artifacts/private/human-inputs/<session-id>.md` in the notes worktree, which Git ignores.
@@ -190,14 +227,16 @@ and which grounds deserve another look. Conventions: [convention.md](skills/rese
   the window mid-session, the final reminder may not fire again until the context is compacted
   or cleared.
 - `relay off` is silent: an open session is not told that the rules stopped applying.
-- Notes are shared by every session in the repository and relay does not arbitrate between
-  writers; the skill asks for one writer of `RESEARCH.md` at a time.
+- Notes are shared by every session in the repository, and in every project attached to the
+  same branch, and relay does not arbitrate between writers; the skill asks for one writer of
+  `RESEARCH.md` at a time.
 - Not yet captured from live sessions: worker payloads and the post-compaction SessionStart on
   the pinned Codex build, and the post-compaction SessionStart on Claude Code. See the
   reference docs for what each would change.
 - A hook that is not loaded, not trusted, times out or receives unparseable input enforces
   nothing, the compaction block included. `relay status` checks the file, not the app.
 - relay never pushes. Push the notes branch yourself only to a private remote, to share it between machines;
-  the notes of a public repository stay local. Private inputs are not in Git; back them up yourself.
+  the notes of a public repository stay local, or move to a private home with `notes attach`.
+  Private inputs are not in Git; back them up yourself.
 
 Development: `python3 -m unittest discover -s tests` and `python3 scripts/check_skill.py`.
