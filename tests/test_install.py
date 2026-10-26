@@ -11,7 +11,7 @@ from research_relay import install
 
 
 SKILL = ROOT / "skills/research-relay"
-OLD_CODEX_COMMAND = "/Users/l/.local/bin/python3 /Users/l/ensomi/relay/skills/research-relay/scripts/relay.py hook --agent codex"
+OLD_CODEX_COMMAND = "/usr/local/bin/python3 /opt/old-relay/skills/research-relay/scripts/relay.py hook --agent codex"
 
 
 class InstallTests(RepoCase):
