@@ -16,7 +16,7 @@ HOOKS_FILE = ".agents/hooks.json"
 HOOK_NAME = "research-relay"
 HOOK_EVENTS = ("SessionStart", "PreInvocation")
 REPORTS_WINDOW = False  # transcripts log token counts but not the context window; the policy supplies it
-DEFAULT_WARN_FRACTION = 0.6  # no PreCompact hook: fire closeout earlier (600K on a 1M window) before auto-compaction
+DEFAULT_WARN_FRACTION = 0.5  # no PreCompact hook: fire closeout earlier (500K on a 1M window) before auto-compaction
 USAGE_KEYS = ("input_tokens", "cache_read_tokens", "output_tokens")
 
 

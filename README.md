@@ -158,8 +158,8 @@ reference docs.
   paths because Antigravity sets no project env var.
 - Pass `--window`; Antigravity transcripts log token usage (`PLANNER_RESPONSE`) but not the
   context window.
-- Antigravity has no `PreCompact` hook: `--agent antigravity` defaults `--warn-fraction` to `0.6`
-  (600,000 tokens on a 1,000,000 window; pass `--warn-fraction 0.5` for 500,000) so closeout fires
+- Antigravity has no `PreCompact` hook: `--agent antigravity` defaults `--warn-fraction` to `0.5`
+  (500,000 tokens on a 1,000,000 window; pass `--warn-fraction 0.6` for 600,000) so closeout fires
   before automatic compaction. In `autoresearch` mode, `SessionStart` states that compaction is not
   hook-blocked, and a sharp drop in observed token usage triggers a suspected-compaction closeout
   notice.

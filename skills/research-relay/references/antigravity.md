@@ -58,8 +58,8 @@ and live headless sessions (`agy -p`) whose hooks logged their payloads and tran
   sibling compact `transcript.jsonl`. Both files are flushed before the next `PreInvocation`.
 - Antigravity has no `PreCompact` hook: in `autoresearch` mode compaction cannot be blocked by
   hook (`relay on` and `relay status` warn about this). To compensate, `--agent antigravity`
-  defaults `--warn-fraction` to `0.6` (600,000 tokens on a 1M window; use `--warn-fraction 0.5`
-  for 500,000), `SessionStart` states that compaction is not hook-blocked, and a sharp drop in
+  defaults `--warn-fraction` to `0.5` (500,000 tokens on a 1M window; use `--warn-fraction 0.6`
+  for 600,000), `SessionStart` states that compaction is not hook-blocked, and a sharp drop in
   observed usage (>= 25% of ceiling and < 50% of prior usage) injects a suspected-compaction
   recovery and closeout notice.
 - Antigravity hook payloads carry no `agent_id` field. Subagents run as separate conversations

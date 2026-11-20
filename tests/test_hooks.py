@@ -359,16 +359,16 @@ class HookTests(HookCase):
         self.assertIn("Compaction is NOT blocked by hook", start)
         self.assertNotIn("Compaction is blocked by hook", start)
         self.agy_text("PreInvocation", conversationId="c-auto")  # consumes first-prompt feedback
-        self.write(antigravity_lines(599_999))
+        self.write(antigravity_lines(499_999))
         self.assertEqual(self.agy_hook("PreInvocation", conversationId="c-auto"), {})
-        self.write(antigravity_lines(600_000))
+        self.write(antigravity_lines(500_000))
         closeout = self.agy_text("PreInvocation", conversationId="c-auto")
         self.assertIn("Begin closeout", closeout)
-        self.assertIn("600000 of 1000000 tokens", closeout)
+        self.assertIn("500000 of 1000000 tokens", closeout)
         # Sharp drop (e.g. compaction without PreCompact) triggers recovery + closeout and re-arms state.
         self.write(antigravity_lines(120_000))
         suspected = self.agy_text("PreInvocation", conversationId="c-auto")
-        self.assertIn("dropped sharply from 600000 to 120000", suspected)
+        self.assertIn("dropped sharply from 500000 to 120000", suspected)
         self.assertIn("Re-enter through RESEARCH.md", suspected)
         self.assertFalse(policy.session(self.runtime, "c-auto")["final_sent"])
 

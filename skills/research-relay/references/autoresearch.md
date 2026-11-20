@@ -2,7 +2,7 @@
 
 Applies when `relay status` reports `mode: autoresearch`. Everything in [SKILL.md](../SKILL.md) still holds; this mode adds a session discipline. You are the main thread: hold the human's intent, delegate the work, judge the evidence, keep the notes. Hooks enforce one rule and deliver one reminder:
 
-- Compaction is blocked by hook, manual or automatic, in the main thread and in subagents on Claude Code and Codex. On Antigravity there is no `PreCompact` hook, so compaction is avoided by discipline and an earlier closeout threshold (`warn_fraction` 0.5–0.6, default 0.6). Do not run `/compact`.
+- Compaction is blocked by hook, manual or automatic, in the main thread and in subagents on Claude Code and Codex. On Antigravity there is no `PreCompact` hook, so compaction is avoided by discipline and an earlier closeout threshold (`warn_fraction` 0.5–0.6, default 0.5). Do not run `/compact`.
 - The final context reminder arrives as a closeout. Acting on it is up to you.
 
 Use this mode in a fresh session the human opened by hand. Never continue a session automatically, and never through compaction.
