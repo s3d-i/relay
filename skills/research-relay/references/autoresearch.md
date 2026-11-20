@@ -2,7 +2,7 @@
 
 Applies when `relay status` reports `mode: autoresearch`. Everything in [SKILL.md](../SKILL.md) still holds; this mode adds a session discipline. You are the main thread: hold the human's intent, delegate the work, judge the evidence, keep the notes. Hooks enforce one rule and deliver one reminder:
 
-- Compaction is blocked, manual or automatic, in the main thread and in subagents. Do not run `/compact`; the block message is expected.
+- Compaction is blocked by hook, manual or automatic, in the main thread and in subagents on Claude Code and Codex. On Antigravity there is no `PreCompact` hook, so compaction is avoided by discipline and an earlier closeout threshold (`warn_fraction` 0.5–0.6, default 0.6). Do not run `/compact`.
 - The final context reminder arrives as a closeout. Acting on it is up to you.
 
 Use this mode in a fresh session the human opened by hand. Never continue a session automatically, and never through compaction.
@@ -10,7 +10,7 @@ Use this mode in a fresh session the human opened by hand. Never continue a sess
 ## Delegate
 
 - Subagents do the substantive work: investigation, experiments, code changes, verification. One at a time by default. While one runs, wait for it; handle human feedback and closeout; do not start another investigation or do the worker's job in this thread. Bounded review of returned evidence and code stays with you.
-- Start every worker with fresh context and a self-contained brief (Claude Code: not `subagent_type: "fork"`; Codex: `spawn_agent` with `fork_turns: "none"`). New agent per independent task; do not reuse a worker carrying another task's history. Feedback for a running task is delivered explicitly.
+- Start every worker with fresh context and a self-contained brief (Claude Code: not `subagent_type: "fork"`; Codex: `spawn_agent` with `fork_turns: "none"`; Antigravity: `invoke_subagent` or `swarm` `add` without `fork`). New agent per independent task; do not reuse a worker carrying another task's history. Feedback for a running task is delivered explicitly.
 - The brief holds the question and why it matters; relevant facts, decisions and uncertainty; concrete repository and evidence paths; allowed changes and constraints; a verifiable deliverable; a stopping boundary with instructions to report failures and unfinished work. No "as discussed". Ask the worker to keep useful observations and failed paths and to report output locations and code or experiment identities.
 - Weigh evidence strength before integrating results. A finished subagent does not end the turn; continue while direction is clear. Pause for a decision only the human can make, a stop request, or the closeout.
 - When human feedback arrives while a worker runs: check the worker's actual state, save the input as in SKILL.md section 2, then pass necessary changes to the worker. Stops apply immediately; ideas do not automatically interrupt a worker. If your turn was interrupted, verify the worker's state instead of assuming it stopped.

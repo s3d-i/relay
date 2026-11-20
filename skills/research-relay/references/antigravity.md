@@ -9,7 +9,7 @@ Run on the machine that runs Antigravity; the hooks file holds absolute paths.
 
 ```sh
 python3 -m research_relay install --repo /path/to/project --agent antigravity
-python3 -m research_relay on      --repo /path/to/project --agent antigravity --window 1000000
+python3 -m research_relay on      --repo /path/to/project --mode autoresearch --agent antigravity --window 1000000
 ```
 
 `install`:
@@ -57,7 +57,11 @@ and live headless sessions (`agy -p`) whose hooks logged their payloads and tran
   `PLANNER_RESPONSE` past the 256 KiB tail of `transcript_full.jsonl`, relay falls back to the
   sibling compact `transcript.jsonl`. Both files are flushed before the next `PreInvocation`.
 - Antigravity has no `PreCompact` hook: in `autoresearch` mode compaction cannot be blocked by
-  hook (`relay on` and `relay status` warn about this); closeout reminders still arrive.
+  hook (`relay on` and `relay status` warn about this). To compensate, `--agent antigravity`
+  defaults `--warn-fraction` to `0.6` (600,000 tokens on a 1M window; use `--warn-fraction 0.5`
+  for 500,000), `SessionStart` states that compaction is not hook-blocked, and a sharp drop in
+  observed usage (>= 25% of ceiling and < 50% of prior usage) injects a suspected-compaction
+  recovery and closeout notice.
 - Antigravity hook payloads carry no `agent_id` field. Subagents run as separate conversations
   with their own `conversationId` and `transcriptPath`, so they fire hooks independently and keep
   separate session state without overwriting the main thread's state.

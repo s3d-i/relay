@@ -82,16 +82,25 @@ class PolicyTests(RepoCase):
         code, value = self.cli("status", "--repo", self.repo)
         self.assertEqual((code, value["mode"]), (0, "autoresearch"))
 
-    def test_antigravity_autoresearch_warns_about_missing_precompact_hook(self):
+    def test_antigravity_autoresearch_defaults_and_warnings(self):
         code, value = self.cli("on", "--repo", self.repo, "--mode", "autoresearch",
                                "--agent", "antigravity", "--window", 1000000)
         self.assertEqual(code, 0)
+        self.assertEqual(value["warn_fraction"], 0.6)
         self.assertTrue(any("PreCompact" in w for w in value["warnings"]))
+        self.assertFalse(any("warn_fraction" in w for w in value["warnings"]))
         code, value = self.cli("status", "--repo", self.repo)
         self.assertTrue(any("PreCompact" in w for w in value["warnings"]))
+        code, value = self.cli("on", "--repo", self.repo, "--mode", "autoresearch",
+                               "--agent", "antigravity", "--window", 1000000, "--warn-fraction", 0.75)
+        self.assertEqual(code, 0)
+        self.assertTrue(any("warn_fraction" in w for w in value["warnings"]))
+        code, value = self.cli("on", "--repo", self.repo, "--mode", "autoresearch",
+                               "--agent", "antigravity", "--window", 1000000, "--warn-fraction", 0.5)
+        self.assertEqual((code, value["warn_fraction"]), (0, 0.5))
         code, value = self.cli("on", "--repo", self.repo, "--mode", "rhizome",
                                "--agent", "antigravity", "--window", 1000000)
-        self.assertEqual((code, value["warnings"]), (0, []))
+        self.assertEqual((code, value["warn_fraction"], value["warnings"]), (0, 0.6, []))
 
 
 if __name__ == "__main__":

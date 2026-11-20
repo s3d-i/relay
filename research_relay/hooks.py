@@ -93,7 +93,7 @@ def _session_text(backend, active, auto, project, where):
     if not (active.get("context_window") or backend.REPORTS_WINDOW):
         parts.append(rhizome.UNMONITORED)
     if auto:
-        parts.append(autoresearch.SESSION)
+        parts.append(autoresearch.session("PreCompact" in backend.HOOK_EVENTS))
     return parts
 
 
@@ -105,8 +105,13 @@ def _reminder(payload, backend, active, auto, state):
     if not limits:
         state["last_usage"] = usage
         return []
+    prev_used = (state.get("last_usage") or {}).get("used")
     result = context.observe(state, usage["used"], limits)
     state["last_usage"] = {**usage, **limits}
+    if (auto and "PreCompact" not in backend.HOOK_EVENTS and prev_used is not None
+            and prev_used - usage["used"] >= max(limits["ceiling"] // 4, 1)
+            and usage["used"] < prev_used // 2):
+        return [autoresearch.compacted_suspected(prev_used, usage["used"])]
     if not result:
         return []
     final = rhizome.final(usage["used"], limits["ceiling"])

@@ -16,6 +16,7 @@ HOOKS_FILE = ".agents/hooks.json"
 HOOK_NAME = "research-relay"
 HOOK_EVENTS = ("SessionStart", "PreInvocation")
 REPORTS_WINDOW = False  # transcripts log token counts but not the context window; the policy supplies it
+DEFAULT_WARN_FRACTION = 0.6  # no PreCompact hook: fire closeout earlier (600K on a 1M window) before auto-compaction
 USAGE_KEYS = ("input_tokens", "cache_read_tokens", "output_tokens")
 
 
@@ -237,8 +238,13 @@ def format_error(event, message):
 
 def warnings(repo, policy):
     if policy and policy.get("active") and policy.get("agent") == NAME and policy.get("mode") == "autoresearch":
-        return ["Antigravity has no PreCompact hook: compaction cannot be blocked by hook in auto-research mode "
-                "(closeout reminders still arrive)."]
+        notes = ["Antigravity has no PreCompact hook: compaction cannot be blocked by hook in auto-research mode "
+                 "(closeout reminders still arrive, and sharp token drops trigger a suspected-compaction closeout)."]
+        fraction = policy.get("warn_fraction", DEFAULT_WARN_FRACTION)
+        if fraction > 0.65:
+            notes.append(f"warn_fraction is {fraction} on Antigravity without a PreCompact hook; "
+                         "0.5-0.6 (500K-600K on a 1M window) is recommended so closeout arrives before auto-compaction.")
+        return notes
     return []
 
 

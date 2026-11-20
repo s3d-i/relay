@@ -35,7 +35,9 @@ def enable(runtime, mode="rhizome", agent=None, window=None, warn_fraction=None,
            compact_limit=None, checkpoint_fraction=None):
     if mode not in MODES:
         raise RelayError(f"--mode must be one of {', '.join(MODES)}.")
-    fraction = context.WARN_FRACTION if warn_fraction is None else warn_fraction
+    backend = backends.get(agent) if agent is not None else None
+    default_fraction = getattr(backend, "DEFAULT_WARN_FRACTION", context.WARN_FRACTION) if backend else context.WARN_FRACTION
+    fraction = default_fraction if warn_fraction is None else warn_fraction
     if not 0.1 <= fraction <= 0.95:
         raise RelayError("--warn-fraction must be between 0.1 and 0.95.")
     step = context.CHECKPOINT_FRACTION if checkpoint_fraction is None else checkpoint_fraction
@@ -44,7 +46,7 @@ def enable(runtime, mode="rhizome", agent=None, window=None, warn_fraction=None,
     reserve = context.RESERVE if reserve is None else reserve
     if reserve < 0 or any(n is not None and n <= 0 for n in (window, compact_limit)):
         raise RelayError("--window and --compact-limit must be positive, --reserve not negative.")
-    if mode == "autoresearch" and (agent is None or (not backends.get(agent).REPORTS_WINDOW and not window)):
+    if mode == "autoresearch" and (backend is None or (not backend.REPORTS_WINDOW and not window)):
         # A mode that blocks compaction must be able to deliver its closeout reminder.
         raise RelayError("--mode autoresearch needs --agent, and --window for agents that do not report "
                          "their context window (claude, antigravity).")
