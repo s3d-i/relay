@@ -4,10 +4,10 @@ import importlib
 import json
 from pathlib import Path
 
-from ..state import RelayError, write_json
+from ..state import RelayError, read_json, write_json
 
 
-NAMES = ("codex", "claude")
+NAMES = ("codex", "claude", "antigravity")
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "PreCompact")
 TIMEOUT = 5
 TAIL = 256 * 1024
@@ -18,6 +18,37 @@ def get(name):
     if name not in NAMES:
         raise RelayError(f"Unknown agent {name!r}; choose one of {', '.join(NAMES)}.")
     return importlib.import_module("." + name, __name__)
+
+
+def parse_payload(payload):
+    """Normalize Claude Code / Codex hook stdin JSON to relay's internal keys."""
+    return {
+        "event": payload.get("hook_event_name"),
+        "session_id": payload.get("session_id"),
+        "cwd": payload.get("cwd"),
+        "transcript_path": payload.get("transcript_path"),
+        "agent_id": payload.get("agent_id"),
+        "source": payload.get("source"),
+    }
+
+
+def format_context(event, text):
+    return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}}
+
+
+def format_error(event, message, backend):
+    if event == "PreCompact":
+        # Fail closed on compaction only. A policy read as rhizome has already answered by now.
+        return backend.block_compaction(message)
+    return {"systemMessage": message}
+
+
+def hooks_present(path):
+    try:
+        current = read_json(path, {})
+    except RelayError:
+        return False
+    return present(current.get("hooks"))
 
 
 def hook_map(command):

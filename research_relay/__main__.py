@@ -16,7 +16,7 @@ def parser():
         "subagents, closeout before the context wall.")
     p.add_argument("--version", action="version", version=__version__)
     sub = p.add_subparsers(dest="cmd", required=True)
-    agent = dict(choices=backends.NAMES, metavar="{codex,claude}")
+    agent = dict(choices=backends.NAMES, metavar=f"{{{','.join(backends.NAMES)}}}")
     q = sub.add_parser("install", help="symlink the skill, add ignore rules, write the hooks file")
     q.add_argument("--repo", default=".")
     q.add_argument("--agent", required=True, **agent)

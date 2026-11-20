@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from . import backends
-from .state import RelayError, git, read_json, toplevel
+from .state import RelayError, git, toplevel
 
 
 SKILL = Path(__file__).resolve().parent.parent / "skills/research-relay"
@@ -45,12 +45,16 @@ def install(repo, agent, uninstall=False):
     repo = toplevel(repo)
     if uninstall:
         return _uninstall(repo, agent, backend)
-    target, installed = skill_link(repo, backend)
     rules = ignore_rules(backend)
-    gitignore_changed = patch_gitignore(repo, rules)
-    if not installed:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.symlink_to(SKILL, target_is_directory=True)
+    if hasattr(backend, "install_skill"):
+        target = backend.install_skill(repo, SKILL)
+        gitignore_changed = patch_gitignore(repo, rules)
+    else:
+        target, installed = skill_link(repo, backend)
+        gitignore_changed = patch_gitignore(repo, rules)
+        if not installed:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.symlink_to(SKILL, target_is_directory=True)
     result = backend.install_hooks(repo, backend.hook_command(LAUNCHER, repo))
     tracked = git(repo, "ls-files", "-z", "--", *(rule.strip("/") for rule in rules))
     notes = backend.warnings(repo, None)
@@ -63,13 +67,18 @@ def install(repo, agent, uninstall=False):
 def _uninstall(repo, agent, backend):
     # Hooks first: an unreadable hooks file stops here with nothing changed.
     result = backend.uninstall_hooks(repo)
-    target = repo / backend.SKILL_DIR / "research-relay"
-    # relay's link from this or another relay checkout; a link only, so its target is never touched.
-    if target.is_symlink() and (target.resolve() == SKILL
-                                or os.readlink(target).rstrip("/").endswith("skills/research-relay")):
-        target.unlink()
-    elif target.exists() or target.is_symlink():
-        result["skill_kept"] = "not relay's link; left in place"
+    if hasattr(backend, "uninstall_skill"):
+        target, kept = backend.uninstall_skill(repo, SKILL)
+        if kept:
+            result["skill_kept"] = kept
+    else:
+        target = repo / backend.SKILL_DIR / "research-relay"
+        # relay's link from this or another relay checkout; a link only, so its target is never touched.
+        if target.is_symlink() and (target.resolve() == SKILL
+                                    or os.readlink(target).rstrip("/").endswith("skills/research-relay")):
+            target.unlink()
+        elif target.exists() or target.is_symlink():
+            result["skill_kept"] = "not relay's link; left in place"
     others = []
     for name in backends.NAMES:
         try:
@@ -84,11 +93,7 @@ def _uninstall(repo, agent, backend):
 
 def present(backend, repo):
     """Whether the hooks file holds any relay entry, current or from an older relay."""
-    try:
-        current = read_json(backend.hooks_file(repo), {})
-    except RelayError:
-        return False
-    return backends.present(current.get("hooks"))
+    return backend.hooks_present(repo)
 
 
 def warnings(repo, policy=None):

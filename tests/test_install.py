@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from base import ROOT, RepoCase
-from research_relay.backends import claude, codex
+from research_relay.backends import antigravity, claude, codex
 from research_relay.install import LAUNCHER
 from research_relay import install
 
@@ -196,6 +196,84 @@ class InstallTests(RepoCase):
         hooks_file.write_text("not JSON")
         code, value = self.cli("install", "--repo", self.repo, "--agent", "codex", "--uninstall")
         self.assertEqual(code, 2)
+        self.assertEqual(hooks_file.read_text(), "not JSON")
+
+    def test_antigravity_install_merge_coexistence_and_uninstall(self):
+        # Coexists with Codex in the same repository without colliding on .agents/skills/research-relay.
+        self.cli("install", "--repo", self.repo, "--agent", "codex")
+        hooks_file = self.repo / ".agents/hooks.json"
+        hooks_file.parent.mkdir(parents=True, exist_ok=True)
+        foreign_hook = {"PostToolUse": [{"matcher": "run_command", "hooks": [{"type": "command", "command": "echo lint"}]}]}
+        stale_entry = {"type": "command", "command": "python3 /old/research-relay/scripts/relay.py hook --agent antigravity"}
+        hooks_file.write_text(json.dumps({
+            "lint-checker": foreign_hook,
+            "old-relay": {"Stop": [stale_entry]},
+            "research-relay": {"PostToolUse": [{"matcher": "*", "hooks": [stale_entry]}]},
+        }))
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "antigravity")
+        self.assertEqual(code, 0, value)
+        self.assertTrue(value["installed"] and value["hooks_changed"])
+        written = json.loads(hooks_file.read_text())
+        self.assertEqual(written["lint-checker"], foreign_hook)
+        self.assertNotIn("old-relay", written)
+        self.assertEqual(set(written["research-relay"]), {"SessionStart", "PreInvocation"})
+        command = written["research-relay"]["PreInvocation"][0]["command"]
+        self.assertEqual(command, antigravity.hook_command(LAUNCHER, self.repo))
+        self.assertEqual(shlex.split(command)[-5:], ["hook", "--agent", "antigravity", "--repo", str(self.repo)])
+        # Skill is a real directory with a regular SKILL.md and symlinked scripts/references.
+        skill_dir = self.repo / ".agent/skills/research-relay"
+        self.assertTrue(skill_dir.is_dir() and not skill_dir.is_symlink())
+        self.assertTrue((skill_dir / "SKILL.md").is_file() and not (skill_dir / "SKILL.md").is_symlink())
+        self.assertEqual((skill_dir / "scripts").resolve(), SKILL / "scripts")
+        # Codex symlink is untouched.
+        self.assertEqual((self.repo / ".agents/skills/research-relay").resolve(), SKILL)
+        for path in (".agent/skills/research-relay", ".agents/hooks.json", "artifacts/private/human-inputs/s.md"):
+            self.assertTrue(self.is_ignored(path), path)
+        # Idempotent re-install.
+        before = (hooks_file.read_bytes(), (self.repo / ".gitignore").read_bytes())
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "antigravity")
+        self.assertEqual((code, value["hooks_changed"], value["gitignore_changed"]), (0, False, False))
+        self.assertEqual((hooks_file.read_bytes(), (self.repo / ".gitignore").read_bytes()), before)
+        # Status reports current: True.
+        status_hooks = self.cli("status", "--repo", self.repo)[1]["hooks"]["antigravity"]
+        self.assertEqual(status_hooks, {"file": str(hooks_file), "installed": True, "current": True})
+        # Print needs no writes.
+        code, printed = self.cli("install", "--repo", self.repo, "--agent", "antigravity", "--print")
+        self.assertEqual((code, printed), (0, antigravity.render_hooks(antigravity.hook_command(LAUNCHER, self.repo))))
+        # Uninstall keeps foreign hooks and names codex as still installed; source checkout stays intact.
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "antigravity", "--uninstall")
+        self.assertEqual((code, value["installed"], value["hooks_changed"]), (0, False, True))
+        self.assertEqual(value["other_agents_hooks"], ["codex"])
+        self.assertNotIn("hooks_file_removed", value)
+        self.assertEqual(json.loads(hooks_file.read_text()), {"lint-checker": foreign_hook})
+        self.assertFalse(skill_dir.exists())
+        self.assertTrue((SKILL / "scripts/relay.py").is_file())
+        # Deleting when no foreign hooks remain removes the file.
+        hooks_file.unlink()
+        self.cli("install", "--repo", self.repo, "--agent", "antigravity")
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "antigravity", "--uninstall")
+        self.assertEqual((code, value["hooks_changed"], value["hooks_file_removed"]), (0, True, True))
+        self.assertFalse(hooks_file.exists())
+
+    def test_antigravity_preserves_foreign_skill_and_invalid_json(self):
+        foreign = self.repo / ".agent/skills/research-relay"
+        foreign.mkdir(parents=True)
+        (foreign / "SKILL.md").write_text("foreign skill")
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "antigravity")
+        self.assertEqual(code, 2)
+        self.assertIn("Existing skill preserved", value["error"])
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "antigravity", "--uninstall")
+        self.assertEqual(code, 0)
+        self.assertIn("left in place", value["skill_kept"])
+        self.assertEqual((foreign / "SKILL.md").read_text(), "foreign skill")
+        (foreign / "SKILL.md").unlink()
+        foreign.rmdir()
+        hooks_file = self.repo / ".agents/hooks.json"
+        hooks_file.parent.mkdir(parents=True, exist_ok=True)
+        hooks_file.write_text("not JSON")
+        code, value = self.cli("install", "--repo", self.repo, "--agent", "antigravity")
+        self.assertEqual(code, 2)
+        self.assertIn("Invalid JSON", value["error"])
         self.assertEqual(hooks_file.read_text(), "not JSON")
 
 

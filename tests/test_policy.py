@@ -23,7 +23,7 @@ class PolicyTests(RepoCase):
         self.assertNotIn("warnings", stored)
         code, value = self.cli("status", "--repo", self.repo)
         self.assertEqual((code, value["active"], value["mode"], value["warnings"]), (0, True, "rhizome", []))
-        self.assertEqual(set(value["hooks"]), {"codex", "claude"})
+        self.assertEqual(set(value["hooks"]), {"codex", "claude", "antigravity"})
         self.assertFalse(value["hooks"]["claude"]["installed"])
         self.assertIsNone(value["notes"]["notes"])
         code, value = self.cli("off", "--repo", self.repo)
@@ -48,7 +48,8 @@ class PolicyTests(RepoCase):
     def test_invalid_options_rejected(self):
         cases = (("--warn-fraction", 0.99), ("--window", 0), ("--compact-limit", -1), ("--reserve", -1),
                  ("--checkpoint-fraction", 1), ("--window", 100000),  # nothing left above the default reserve
-                 ("--mode", "autoresearch"), ("--mode", "autoresearch", "--agent", "claude"))
+                 ("--mode", "autoresearch"), ("--mode", "autoresearch", "--agent", "claude"),
+                 ("--mode", "autoresearch", "--agent", "antigravity"))
         for args in cases:
             with self.subTest(args=args):
                 self.assertEqual(self.cli("on", "--repo", self.repo, *args)[0], 2)
@@ -80,6 +81,17 @@ class PolicyTests(RepoCase):
             {"active": True, "agent": "claude", "context_window": 1000000, "warn_fraction": 0.6}))
         code, value = self.cli("status", "--repo", self.repo)
         self.assertEqual((code, value["mode"]), (0, "autoresearch"))
+
+    def test_antigravity_autoresearch_warns_about_missing_precompact_hook(self):
+        code, value = self.cli("on", "--repo", self.repo, "--mode", "autoresearch",
+                               "--agent", "antigravity", "--window", 1000000)
+        self.assertEqual(code, 0)
+        self.assertTrue(any("PreCompact" in w for w in value["warnings"]))
+        code, value = self.cli("status", "--repo", self.repo)
+        self.assertTrue(any("PreCompact" in w for w in value["warnings"]))
+        code, value = self.cli("on", "--repo", self.repo, "--mode", "rhizome",
+                               "--agent", "antigravity", "--window", 1000000)
+        self.assertEqual((code, value["warnings"]), (0, []))
 
 
 if __name__ == "__main__":

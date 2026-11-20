@@ -1,8 +1,20 @@
 """Claude Code: .claude/settings.local.json, transcript message.usage."""
 
 from pathlib import Path
+import sys
 
-from . import HOOK_EVENTS, hook_map, installed, last_value, merge_hooks, strip_hooks
+from . import (
+    HOOK_EVENTS,
+    format_context,
+    format_error as _format_error,
+    hook_map,
+    hooks_present as _hooks_present,
+    installed,
+    last_value,
+    merge_hooks,
+    parse_payload,
+    strip_hooks,
+)
 from ..state import RelayError, read_json, write_json
 
 
@@ -49,12 +61,20 @@ def uninstall_hooks(repo):
     return strip_hooks(path, current)
 
 
+def hooks_present(repo):
+    return _hooks_present(hooks_file(repo))
+
+
 def hooks_installed(repo, command):
     try:
         current = read_json(hooks_file(repo), {})
     except RelayError:
         return False
     return installed(current.get("hooks"), hook_map(command))
+
+
+def format_error(event, message):
+    return _format_error(event, message, sys.modules[__name__])
 
 
 def warnings(repo, policy):

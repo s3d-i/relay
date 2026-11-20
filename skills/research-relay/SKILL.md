@@ -9,7 +9,7 @@ The research notes of this repository are a rhizome: observations, hypotheses, p
 
 relay has two modes, shown as `mode` by `relay status`. In `rhizome` mode the hooks only remind; nothing is blocked. `autoresearch` mode adds a session discipline on top: compaction is blocked, subagents must start with fresh context, and the final context reminder is a closeout. When the mode is `autoresearch`, also follow [auto-research](references/autoresearch.md).
 
-Commands below run as `python3 <skill>/scripts/relay.py ...`, where `<skill>` is this directory. Agent-specific details: [Claude Code](references/claude-code.md), [Codex](references/codex.md).
+Commands below run as `python3 <skill>/scripts/relay.py ...`, where `<skill>` is this directory. Agent-specific details: [Claude Code](references/claude-code.md), [Codex](references/codex.md), [Antigravity](references/antigravity.md).
 
 ## 1. Enter
 

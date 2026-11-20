@@ -6,7 +6,7 @@ import unittest
 
 from base import ROOT, RepoCase
 from research_relay import hooks, policy
-from research_relay.backends import claude, codex
+from research_relay.backends import antigravity, claude, codex
 
 
 # Hook subprocesses must not inherit the project of a Claude Code session running the suite.
@@ -35,6 +35,15 @@ def claude_lines(used):
         # A subagent's record in the same file is not the main thread's usage.
         {"type": "assistant", "isSidechain": True, "message": {"role": "assistant", "usage": {"input_tokens": 7}}},
         {"type": "progress", "data": {}},
+    ]
+
+
+def antigravity_lines(used):
+    return [
+        {"step_index": 0, "source": "USER_EXPLICIT", "type": "USER_INPUT", "created_at": "2026-09-30T00:00:00Z"},
+        {"step_index": 1, "source": "MODEL", "type": "PLANNER_RESPONSE", "created_at": "2026-09-30T00:00:01Z",
+         "input_tokens": 20, "cache_read_tokens": used - 30, "output_tokens": 10},
+        {"step_index": 2, "source": "MODEL", "type": "GENERIC", "created_at": "2026-09-30T00:00:02Z"},
     ]
 
 
@@ -302,6 +311,68 @@ class HookTests(HookCase):
                          ["decision"], "block")
         # Codex has no such variable: one inherited from a Claude Code shell must not count.
         self.assertEqual(self.run_hook(payload, env={"CLAUDE_PROJECT_DIR": str(self.repo)}), {})
+
+    def agy_hook(self, event, repo=None, **kw):
+        payload = {"hookEventName": event, "conversationId": "c1", "cwd": str(self.repo),
+                   "workspacePaths": [str(self.repo)], "transcriptPath": str(self.transcript), **kw}
+        return hooks.handle(payload, antigravity, repo)
+
+    def agy_text(self, event, repo=None, **kw):
+        out = self.agy_hook(event, repo=repo, **kw)
+        steps = out["injectSteps"]
+        self.assertEqual(len(steps), 1)
+        return steps[0]["systemMessage"]["systemMessage"]
+
+    def test_antigravity_session_feedback_and_reminders(self):
+        start = self.agy_text("SessionStart")
+        self.assertIn("RESEARCH.md", start)
+        self.assertNotIn("cannot monitor", start)
+        # First PreInvocation delivers human-feedback provenance once; no usage yet.
+        first = self.agy_text("PreInvocation", invocationNum=0)
+        self.assertTrue(first.startswith("research-relay human feedback"))
+        self.assertEqual(self.agy_hook("PreInvocation", invocationNum=1), {})
+        # Context growth checkpoints and final reminder.
+        self.write(antigravity_lines(10000))
+        self.assertEqual(self.agy_hook("PreInvocation", invocationNum=2), {})
+        self.write(antigravity_lines(30000))
+        self.assertIn("checkpoint: context has grown by about 20000 tokens", self.agy_text("PreInvocation"))
+        self.assertEqual(self.agy_hook("PreInvocation"), {})
+        self.write(antigravity_lines(FINAL))
+        final = self.agy_text("PreInvocation")
+        self.assertIn(f"{FINAL} of {WINDOW} tokens, past the final reminder threshold", final)
+        self.assertNotIn("closeout", final)
+        state = policy.session(self.runtime, "c1")
+        self.assertEqual(state["last_usage"], {
+            "used": FINAL, "window": None, "observed_at": "2026-09-30T00:00:01Z",
+            "ceiling": WINDOW, "final": FINAL, "step": STEP})
+        # Autoresearch closeout on PreInvocation.
+        self.on("autoresearch")
+        self.write(antigravity_lines(FINAL + STEP))
+        text = self.agy_text("PreInvocation")
+        self.assertIn("now in auto-research mode", text)
+        self.assertIn("Begin closeout", text)
+
+    def test_antigravity_falls_back_to_compact_transcript_when_full_tail_misses(self):
+        full = self.repo.parent / "transcript_full.jsonl"
+        compact = self.repo.parent / "transcript.jsonl"
+        huge_tool = {"step_index": 2, "source": "MODEL", "type": "GENERIC", "content": "x" * (300 * 1024)}
+        full.write_text("".join(json.dumps(line) + "\n" for line in antigravity_lines(FINAL) + [huge_tool] * 16))
+        compact.write_text("".join(json.dumps(line) + "\n" for line in antigravity_lines(FINAL)))
+        self.assertGreater(full.stat().st_size, 4 * 1024 * 1024)
+        self.assertEqual(antigravity.read_usage(full)["used"], FINAL)
+        self.agy_text("SessionStart", transcriptPath=str(full))
+        text = self.agy_text("PreInvocation", transcriptPath=str(full))
+        self.assertIn("past the final reminder threshold", text)
+
+    def test_antigravity_errors_and_cli_repo_override(self):
+        err = self.run_hook("not json", agent="antigravity")
+        self.assertIn("research-relay hook failed", err["injectSteps"][0]["systemMessage"]["systemMessage"])
+        self.assertEqual(self.agy_hook("PostToolUse"), {})
+        payload = json.dumps({"hookEventName": "SessionStart", "conversationId": "c2",
+                              "cwd": str(self.repo.parent), "workspacePaths": [str(self.repo.parent)]})
+        self.assertEqual(self.run_hook(payload, agent="antigravity"), {})
+        out = self.run_hook(payload, "--repo", self.repo, agent="antigravity")
+        self.assertIn("RESEARCH.md", out["injectSteps"][0]["systemMessage"]["systemMessage"])
 
 
 if __name__ == "__main__":

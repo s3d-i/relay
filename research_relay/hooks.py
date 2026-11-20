@@ -9,15 +9,12 @@ from .state import RelayError, lock
 
 def handle(payload, backend, repo=None):
     """`repo` is the repository the hook was installed in; without it (older hook commands) the payload cwd."""
-    event = payload.get("hook_event_name") if isinstance(payload, dict) else None
+    parsed = backend.parse_payload(payload) if isinstance(payload, dict) else None
+    event = parsed["event"] if parsed else None
     try:
-        return _handle(payload, backend, event, repo)
+        return _handle(parsed, backend, event, repo)
     except Exception as exc:  # noqa: BLE001  the runner needs one JSON object whatever broke
-        message = f"research-relay hook failed: {exc}"
-        if event == "PreCompact":
-            # Fail closed on compaction only. A policy read as rhizome has already answered by now.
-            return backend.block_compaction(message)
-        return {"systemMessage": message}
+        return backend.format_error(event, f"research-relay hook failed: {exc}")
 
 
 def _handle(payload, backend, event, repo):
@@ -52,7 +49,7 @@ def _handle(payload, backend, event, repo):
         parts = _main_thread(payload, backend, event, active, auto, state, project, where)
         if state != before:
             policy.save_session(runtime, session_id, state)
-    return _context(event, "\n\n".join(parts)) if parts else {}
+    return backend.format_context(event, "\n\n".join(parts)) if parts else {}
 
 
 def _main_thread(payload, backend, event, active, auto, state, project, where):
@@ -80,6 +77,10 @@ def _main_thread(payload, backend, event, active, auto, state, project, where):
             state["feedback_emitted"] = True
             parts.append(rhizome.FEEDBACK)
         return parts
+    if event == "PreInvocation":
+        if not state.get("feedback_emitted"):
+            state["feedback_emitted"] = True
+            parts.append(rhizome.FEEDBACK)
     return parts + _reminder(payload, backend, active, auto, state)
 
 
@@ -112,7 +113,3 @@ def _reminder(payload, backend, active, auto, state):
     if auto and usage["used"] >= limits["final"]:
         return [autoresearch.closeout(final)]  # every reminder past the threshold is the closeout
     return [final if result[0] == "final" else rhizome.checkpoint(result[1])]
-
-
-def _context(event, text):
-    return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}}

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import re
 
-from . import context
+from . import backends, context
 from .state import RelayError, read_json, runtime_dir, write_json
 
 
@@ -44,10 +44,10 @@ def enable(runtime, mode="rhizome", agent=None, window=None, warn_fraction=None,
     reserve = context.RESERVE if reserve is None else reserve
     if reserve < 0 or any(n is not None and n <= 0 for n in (window, compact_limit)):
         raise RelayError("--window and --compact-limit must be positive, --reserve not negative.")
-    if mode == "autoresearch" and (agent is None or agent == "claude" and not window):
+    if mode == "autoresearch" and (agent is None or (not backends.get(agent).REPORTS_WINDOW and not window)):
         # A mode that blocks compaction must be able to deliver its closeout reminder.
-        raise RelayError("--mode autoresearch needs --agent, and --window with --agent claude: "
-                         "Claude Code does not report its context window.")
+        raise RelayError("--mode autoresearch needs --agent, and --window for agents that do not report "
+                         "their context window (claude, antigravity).")
     value = {"version": 2, "active": True, "mode": mode, "agent": agent, "context_window": window,
              "compact_limit": compact_limit, "warn_fraction": fraction, "reserve": reserve,
              "checkpoint_fraction": step, "since": now()}

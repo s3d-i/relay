@@ -1,9 +1,9 @@
 # relay
 
 relay keeps the notes of an open research problem as a rhizome, and keeps agent sessions
-feeding it. It is a small Python tool (3.10+, stdlib only) that hooks into Claude Code or
-Codex Desktop and keeps the notes on a separate Git branch. It is a personal tool, not a
-release.
+feeding it. It is a small Python tool (3.10+, stdlib only) that hooks into Claude Code,
+Codex Desktop or Antigravity and keeps the notes on a separate Git branch. It is a personal tool,
+not a release.
 
 ## The rhizome
 
@@ -73,8 +73,8 @@ compaction or `/clear` starts the count over, and so does a drop in usage of mor
 of the ceiling below the final threshold (a rewind). A ceiling of 100,000 or less leaves no
 room above the default reserve: lower `--reserve`.
 
-The window comes from `--window`, else from the transcript. Codex reports it; Claude Code does
-not, so without `--window` a Claude Code session gets no reminders and is told so.
+The window comes from `--window`, else from the transcript. Codex reports it; Claude Code and
+Antigravity do not, so without `--window` those sessions get no reminders and are told so.
 
 relay does not create agents, check handoff quality, or verify that the notes are current. That
 discipline lives in the skill text and in the injected reminders.
@@ -85,7 +85,7 @@ Clone relay anywhere. Commands run as `python3 <relay-checkout>/skills/research-
 or, from the checkout, `python3 -m research_relay ...`. Below, `relay` stands for either.
 
 ```sh
-relay install --repo /path/to/project --agent claude   # or --agent codex
+relay install --repo /path/to/project --agent claude   # or --agent codex | antigravity
 relay on      --repo /path/to/project --agent claude --window 1000000
 relay on      --repo /path/to/project --agent claude --window 1000000 --mode autoresearch
 relay status  --repo /path/to/project
@@ -147,6 +147,20 @@ reference docs.
 - Pass `--compact-limit` with Codex's `model_auto_compact_token_limit` when that is below the
   window; relay does not read Codex's configuration and warns while the limit is missing.
 - Details: [references/codex.md](skills/research-relay/references/codex.md).
+
+### Antigravity, pinned CLI 1.5.12
+
+- Skill directory: `<project>/.agent/skills/research-relay` (`SKILL.md` copied as a regular file,
+  with `scripts` and `references` symlinked back to the relay checkout because Antigravity's skill
+  scanner skips symlinks).
+- Hooks: merged under `"research-relay"` in `<project>/.agents/hooks.json` (`SessionStart` and
+  `PreInvocation`). Run `install` on the machine that runs Antigravity; the command holds absolute
+  paths because Antigravity sets no project env var.
+- Pass `--window`; Antigravity transcripts log token usage (`PLANNER_RESPONSE`) but not the
+  context window.
+- Antigravity has no `PreCompact` hook: in `autoresearch` mode compaction cannot be blocked by
+  hook, though closeout reminders still arrive.
+- Details: [references/antigravity.md](skills/research-relay/references/antigravity.md).
 
 Then open a fresh chat in the project and invoke the skill ([SKILL.md](skills/research-relay/SKILL.md)):
 it reads the notes, aligns with you, and checks `relay status` for the mode. The auto-research
